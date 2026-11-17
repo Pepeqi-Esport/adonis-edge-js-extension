@@ -1,0 +1,12 @@
+{
+  "Edge escaped mustache": {
+    "prefix": "{{",
+    "body": "{{ $1 }}$0",
+    "description": "Escaped Edge output {{ }}"
+  },
+  "Edge unescaped mustache": {
+    "prefix": "{{{",
+    "body": "{{{ $1 }}}$0",
+    "description": "Unescaped Edge output {{{ }}}"
+  }
+}

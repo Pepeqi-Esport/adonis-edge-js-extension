@@ -1,0 +1,133 @@
+{
+  "name": "adonis-edge-js",
+  "displayName": "Adonis Edge JS",
+  "description": "AdonisJS toolkit: route→controller navigation, Edge formatter, publicAsset/@vite links, and Edge spacer",
+  "version": "1.0.0",
+  "publisher": "codenameryuu",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Pepeqi-Esport-Reborn/adonis-edge-js"
+  },
+  "icon": "images/adonis.png",
+  "engines": {
+    "vscode": "^1.75.0"
+  },
+  "categories": [
+    "Formatters",
+    "Other"
+  ],
+  "activationEvents": [
+    "onLanguage:typescript",
+    "workspaceContains:**/*.edge"
+  ],
+  "contributes": {
+    "languages": [
+      {
+        "id": "edge",
+        "aliases": [
+          "Edge",
+          "edge"
+        ],
+        "extensions": [
+          ".edge"
+        ],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "snippets": [
+      {
+        "language": "edge",
+        "path": "./snippets/edge.json"
+      }
+    ],
+    "commands": [
+      {
+        "command": "edge.convertHtmlCommentsToEdge",
+        "title": "Edge: Convert HTML Comments to Edge Comments"
+      }
+    ],
+    "menus": {
+      "editor/context": [
+        {
+          "command": "edge.convertHtmlCommentsToEdge",
+          "when": "editorLangId == edge",
+          "group": "1_modification"
+        }
+      ]
+    },
+    "configuration": {
+      "title": "Adonis Edge JS",
+      "properties": {
+        "edge.format.enable": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable/disable Edge template formatting"
+        },
+        "edge.format.indentSize": {
+          "type": "number",
+          "default": 4,
+          "description": "Number of spaces per indentation level"
+        },
+        "edge.format.wrapLineLength": {
+          "type": "number",
+          "default": 120,
+          "description": "Maximum line length before wrapping attributes / collapsing short blocks"
+        },
+        "edge.format.collapseShortBlocks": {
+          "type": "boolean",
+          "default": false,
+          "description": "Collapse short single-content HTML blocks onto one line (e.g. <label>…</label>). Off by default so labels and form controls stay multiline"
+        },
+        "edge.format.preserveNewLines": {
+          "type": "boolean",
+          "default": true,
+          "description": "Preserve existing blank lines"
+        },
+        "edge.format.maxPreserveNewLines": {
+          "type": "number",
+          "default": 2,
+          "description": "Maximum number of consecutive blank lines to preserve"
+        },
+        "edge.format.convertHtmlCommentsOnSave": {
+          "type": "boolean",
+          "default": false,
+          "description": "Automatically convert HTML comments (<!-- -->) to Edge comments ({{-- --}}) on save"
+        }
+      }
+    },
+    "configurationDefaults": {
+      "[edge]": {
+        "editor.autoClosingBrackets": "always",
+        "editor.defaultFormatter": "codenameryuu.adonis-edge-js",
+        "editor.tabSize": 4,
+        "editor.detectIndentation": false
+      }
+    }
+  },
+  "main": "./dist/extension.js",
+  "imports": {
+    "#controllers/*": "./app/controllers/*.js"
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsup --minify",
+    "watch": "tsup --watch --sourcemap",
+    "package": "vsce package --no-dependencies",
+    "pretest": "tsc -p ./ && npm run lint",
+    "lint": "eslint src --ext ts",
+    "test": "node ./out/test/runTest.js"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "@types/vscode": "^1.74.0",
+    "@typescript-eslint/eslint-plugin": "^8.73.0",
+    "@typescript-eslint/parser": "^8.73.0",
+    "@vscode/vsce": "^4.1.1",
+    "eslint": "^10.15.0",
+    "ts-loader": "^9.5.4",
+    "tsup": "^9.0.0",
+    "typescript": "^6.0.3",
+    "webpack": "^5.104.1",
+    "webpack-cli": "^7.3.1"
+  }
+}
