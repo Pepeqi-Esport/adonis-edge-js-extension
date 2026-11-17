@@ -1,6 +1,6 @@
 import * as vscode from "vscode";
 import { AdonisRoutesDefinitionProvider } from "./definitionProvider";
-import { EdgeDocumentLinkProvider } from "./edgeDocumentLinkProvider";
+import { registerEdgePathNavigation } from "./edgeDocumentLinkProvider";
 import { registerEdgeSpacer } from "./edgeSpacer";
 import { registerEdgeFormatter } from "./edgeFormatter";
 
@@ -10,31 +10,19 @@ export function activate(context: vscode.ExtensionContext) {
   context.subscriptions.push(
     vscode.languages.registerDefinitionProvider(
       { language: "typescript", pattern: "**/routes/**/*.ts" },
-      routesProvider
+      routesProvider,
     ),
     vscode.languages.registerDefinitionProvider(
       { language: "typescript", pattern: "**/routes/*.ts" },
-      routesProvider
+      routesProvider,
     ),
     vscode.languages.registerDefinitionProvider(
       { language: "typescript", pattern: "**/start/routes.ts" },
-      routesProvider
-    )
+      routesProvider,
+    ),
   );
 
-  const edgeLinkProvider = new EdgeDocumentLinkProvider();
-  const edgeSelectors: vscode.DocumentSelector = [
-    { language: "edge", scheme: "file" },
-    { pattern: "**/*.edge", scheme: "file" },
-  ];
-
-  context.subscriptions.push(
-    vscode.languages.registerDocumentLinkProvider(
-      edgeSelectors,
-      edgeLinkProvider
-    )
-  );
-
+  registerEdgePathNavigation(context);
   registerEdgeSpacer(context);
   registerEdgeFormatter(context);
 }

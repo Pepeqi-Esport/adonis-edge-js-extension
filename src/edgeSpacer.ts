@@ -36,7 +36,7 @@ export function registerEdgeSpacer(context: vscode.ExtensionContext): void {
 
         const range = new vscode.Range(
           new vscode.Position(result.line, result.start),
-          new vscode.Position(result.line, result.end)
+          new vscode.Position(result.line, result.end),
         );
 
         const snippet =
@@ -55,7 +55,7 @@ export function registerEdgeSpacer(context: vscode.ExtensionContext): void {
         }
         return;
       }
-    })
+    }),
   );
 }
 
@@ -68,7 +68,7 @@ interface TagMatch {
 
 function findTagToSpace(
   document: vscode.TextDocument,
-  change: vscode.TextDocumentContentChangeEvent
+  change: vscode.TextDocumentContentChangeEvent,
 ): TagMatch | null {
   const lineIdx = change.range.start.line;
   const lineText = document.lineAt(lineIdx).text;
@@ -84,7 +84,7 @@ function findTagToSpace(
   if (change.text === "{}") {
     const before = lineText.slice(0, change.range.start.character);
     const after = lineText.slice(
-      change.range.start.character + change.text.length
+      change.range.start.character + change.text.length,
     );
     if (/\{\{\s*$/.test(before) && /^\s*\}\}/.test(after)) {
       const start = before.search(/\{\{\s*$/);
@@ -108,7 +108,7 @@ function findTagToSpace(
   const almostTriple = matchNear(
     lineText,
     /\{\{\{(?!\s)(.*?)\}\}(?!\})/g,
-    caret
+    caret,
   );
   if (almostTriple) {
     return toMatch(lineIdx, almostTriple, TAG_TRIPLE);
@@ -123,7 +123,7 @@ function findTagToSpace(
   const double = matchNear(
     lineText,
     /(?<!\{)\{\{(?!\{)(?!\s)(.*?)\}\}(?!\})/g,
-    caret
+    caret,
   );
   if (double) {
     // Skip already-spaced {{ ... }}
@@ -136,11 +136,7 @@ function findTagToSpace(
   return null;
 }
 
-function toMatch(
-  line: number,
-  m: RegExpExecArray,
-  type: number
-): TagMatch {
+function toMatch(line: number, m: RegExpExecArray, type: number): TagMatch {
   return {
     line,
     start: m.index,
@@ -152,7 +148,7 @@ function toMatch(
 function matchNear(
   lineText: string,
   pattern: RegExp,
-  caret: number
+  caret: number,
 ): RegExpExecArray | null {
   const re = new RegExp(pattern.source, pattern.flags);
   let best: RegExpExecArray | null = null;

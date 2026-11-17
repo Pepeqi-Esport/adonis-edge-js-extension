@@ -1,8 +1,8 @@
 {
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
-  "description": "AdonisJS toolkit: route→controller navigation, Edge formatter, publicAsset/@vite links, and Edge spacer",
-  "version": "1.0.0",
+  "description": "AdonisJS toolkit: route→controller navigation, Edge formatter, publicAsset/@vite navigation, and Edge spacer",
+  "version": "1.1.0",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
@@ -44,6 +44,10 @@
       {
         "command": "edge.convertHtmlCommentsToEdge",
         "title": "Edge: Convert HTML Comments to Edge Comments"
+      },
+      {
+        "command": "edge.openExternalUrl",
+        "title": "Edge: Open External URL"
       }
     ],
     "menus": {
@@ -100,7 +104,8 @@
         "editor.autoClosingBrackets": "always",
         "editor.defaultFormatter": "codenameryuu.adonis-edge-js",
         "editor.tabSize": 4,
-        "editor.detectIndentation": false
+        "editor.detectIndentation": false,
+        "editor.links": false
       }
     }
   },
