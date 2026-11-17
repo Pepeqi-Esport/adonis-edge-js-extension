@@ -69,10 +69,19 @@ Built-in formatter for `.edge` templates — use Shift+Alt+F, Format Document, o
 
 1. Repair broken HTML tags split across lines (`</span` + `>` → `</span>`)
 2. Put inline Edge directives on their own lines
-3. Join multi-line HTML attributes into one line
+3. Join multi-line HTML attributes into one line, then wrap like **blade-formatter** (`wrapAttributes`)
 4. Convert simple `@if` / `@else` / `@end` plain-text branches to `{{ cond ? 'a' : 'b' }}`
 5. Optionally collapse short single-content HTML blocks (off by default so `<label>` / form controls stay multiline)
 6. Indent nested `@component` / `@slot` / `@if` / `@each` / HTML / `<script>` / `<style>`
+
+Attribute wrap modes (same as `shufo.vscode-blade-formatter`): `auto` (default, pack to `printWidth`) | `force` | `force-aligned` | `force-expand-multiline` | `aligned-multiple` | `preserve` | `preserve-aligned`.
+
+Example with `auto` + `printWidth` 140:
+
+```edge
+<input type="text" class="form-control regex-number" name="price" id="price" value="{{ FormatterHelper.formatNumber(product.price) }}"
+    onkeyup="formatNumberElement(this)" onpaste="formatNumberElement(this)" placeholder="Masukkan Harga" autocomplete="off">
+```
 
 #### Also
 
@@ -92,6 +101,8 @@ Built-in formatter for `.edge` templates — use Shift+Alt+F, Format Document, o
   },
   "edge.format.indentSize": 4,
   "edge.format.printWidth": 140,
+  "edge.format.wrapAttributes": "auto",
+  "edge.format.wrapAttributesMinAttrs": 2,
   "edge.format.collapseShortBlocks": false,
   "edge.format.convertHtmlCommentsOnSave": false
 }

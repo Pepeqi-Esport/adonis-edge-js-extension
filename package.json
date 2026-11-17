@@ -2,7 +2,7 @@
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
   "description": "Adonis Edge JS Extension for VS Code",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
@@ -75,7 +75,26 @@
         "edge.format.printWidth": {
           "type": "number",
           "default": 140,
-          "description": "Maximum line length (like Prettier printWidth) before wrapping attributes / collapsing short blocks"
+          "description": "Maximum line length (like Prettier printWidth / blade wrapLineLength). Used by wrapAttributes auto mode and short-block collapse"
+        },
+        "edge.format.wrapAttributes": {
+          "type": "string",
+          "default": "auto",
+          "enum": [
+            "auto",
+            "force",
+            "force-aligned",
+            "force-expand-multiline",
+            "aligned-multiple",
+            "preserve",
+            "preserve-aligned"
+          ],
+          "description": "How to wrap HTML attributes (same options as shufo/blade-formatter). Default auto packs attributes until printWidth then continues on the next line"
+        },
+        "edge.format.wrapAttributesMinAttrs": {
+          "type": "number",
+          "default": 2,
+          "description": "Minimum number of attributes before force* wrap modes kick in (blade wrapAttributesMinAttrs)"
         },
         "edge.format.wrapLineLength": {
           "type": "number",

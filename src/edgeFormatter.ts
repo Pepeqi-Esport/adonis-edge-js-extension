@@ -1,11 +1,25 @@
 import * as vscode from "vscode";
 
+/** Same modes as shufo/blade-formatter (js-beautify wrap_attributes). */
+type WrapAttributesMode =
+  | "auto"
+  | "force"
+  | "force-aligned"
+  | "force-expand-multiline"
+  | "aligned-multiple"
+  | "preserve"
+  | "preserve-aligned";
+
 interface EdgeFormatConfig {
   indentSize: number;
   preserveNewLines: boolean;
   maxPreserveNewLines: number;
-  /** Like Prettier printWidth — max line length for wrapping / short-block collapse. */
+  /** Like Prettier printWidth / blade wrapLineLength. */
   printWidth: number;
+  /** Blade-formatter-compatible attribute wrap style. */
+  wrapAttributes: WrapAttributesMode;
+  /** Min attrs before force* modes wrap (blade wrapAttributesMinAttrs). */
+  wrapAttributesMinAttrs: number;
   /** When true, collapse short label/button/etc. blocks onto one line. Off by default. */
   collapseShortBlocks: boolean;
 }
@@ -155,6 +169,9 @@ function getConfig(): EdgeFormatConfig {
     preserveNewLines: config.get("preserveNewLines", true),
     maxPreserveNewLines: config.get("maxPreserveNewLines", 2),
     printWidth,
+    // Default `auto` matches shufo/blade-formatter: pack attrs until printWidth, then continue
+    wrapAttributes: config.get<WrapAttributesMode>("wrapAttributes", "auto"),
+    wrapAttributesMinAttrs: config.get<number>("wrapAttributesMinAttrs", 2),
     collapseShortBlocks: config.get("collapseShortBlocks", false),
   };
 }
@@ -346,6 +363,344 @@ function collapseMultiLineAttribute(str: string): string {
   );
   return result;
 }
+
+/**
+ * Split the attribute region of an HTML open tag into individual attributes.
+ * Handles quotes and `{{ }}` Edge expressions inside values.
+ */
+function splitHtmlAttributes(attrRegion: string): string[] {
+  const attrs: string[] = [];
+  let i = 0;
+  const s = attrRegion.trim();
+
+  while (i < s.length) {
+    while (i < s.length && /\s/.test(s[i])) {
+      i++;
+    }
+    if (i >= s.length) {
+      break;
+    }
+
+    const start = i;
+    // Attribute name
+    while (i < s.length && /[^\s=]/.test(s[i])) {
+      i++;
+    }
+    if (i < s.length && s[i] === "=") {
+      i++; // skip =
+      if (i < s.length && (s[i] === '"' || s[i] === "'")) {
+        const quote = s[i];
+        i++; // opening quote
+        let inExpr = 0;
+        while (i < s.length) {
+          const ch = s[i];
+          const next = s[i + 1] || "";
+          if (ch === "{" && next === "{") {
+            inExpr++;
+            i += 2;
+            continue;
+          }
+          if (ch === "}" && next === "}" && inExpr > 0) {
+            inExpr--;
+            i += 2;
+            continue;
+          }
+          if (inExpr === 0 && ch === quote) {
+            i++; // closing quote
+            break;
+          }
+          i++;
+        }
+      } else {
+        // Unquoted value — stop at whitespace
+        while (i < s.length && !/\s/.test(s[i])) {
+          i++;
+        }
+      }
+    }
+
+    const attr = s.slice(start, i).trim();
+    if (attr) {
+      attrs.push(attr);
+    }
+  }
+
+  return attrs;
+}
+
+/**
+ * Parse a single-line HTML open tag into tag name + attributes.
+ * Returns null if the line isn't a complete open tag (or has trailing content).
+ */
+function parseHtmlOpenTagForWrap(
+  trimmed: string,
+): {
+  tagName: string;
+  attributes: string[];
+  isSelfClosing: boolean;
+} | null {
+  const detected = detectHtmlTag(trimmed);
+  if (!detected) {
+    return null;
+  }
+
+  const tagMatch = trimmed.match(/^<([a-zA-Z][a-zA-Z0-9-]*)\b/);
+  if (!tagMatch) {
+    return null;
+  }
+
+  // Find real closing > (same rules as detectHtmlTag)
+  let inSingle = false;
+  let inDouble = false;
+  let inExpr = 0;
+  let closingIdx = -1;
+  for (let i = 1; i < trimmed.length; i++) {
+    const ch = trimmed[i];
+    const next = trimmed[i + 1] || "";
+    if (!inSingle && !inDouble) {
+      if (ch === "{" && next === "{") {
+        inExpr++;
+        i++;
+        continue;
+      }
+      if (ch === "}" && next === "}" && inExpr > 0) {
+        inExpr--;
+        i++;
+        continue;
+      }
+    }
+    if (inExpr === 0) {
+      if (ch === '"' && !inSingle) {
+        inDouble = !inDouble;
+        continue;
+      }
+      if (ch === "'" && !inDouble) {
+        inSingle = !inSingle;
+        continue;
+      }
+    }
+    if (!inSingle && !inDouble && inExpr === 0 && ch === ">") {
+      closingIdx = i;
+      break;
+    }
+  }
+  if (closingIdx === -1) {
+    return null;
+  }
+
+  const isSelfClosing = trimmed[closingIdx - 1] === "/";
+  const attrEnd = isSelfClosing ? closingIdx - 1 : closingIdx;
+  const attrRegion = trimmed.slice(tagMatch[0].length, attrEnd);
+  const attributes = splitHtmlAttributes(attrRegion);
+
+  if (attributes.length === 0) {
+    return null;
+  }
+
+  return {
+    tagName: detected.tagName,
+    attributes,
+    isSelfClosing,
+  };
+}
+
+function closingBracket(
+  leading: string,
+  isSelfClosing: boolean,
+  ownLine: boolean,
+): string {
+  if (isSelfClosing) {
+    return ownLine ? `${leading}/>` : "/>";
+  }
+  return ownLine ? `${leading}>` : ">";
+}
+
+/**
+ * Pack attributes onto lines up to printWidth (blade-formatter `auto` /
+ * `aligned-multiple` style). First line starts with `prefix` (e.g. `    <input`).
+ */
+function packAttributesToWidth(
+  prefix: string,
+  attrs: string[],
+  continuationIndent: string,
+  printWidth: number,
+  close: string,
+): string[] {
+  if (attrs.length === 0) {
+    return [`${prefix}${close}`];
+  }
+
+  const lines: string[] = [];
+  let current = prefix;
+
+  for (let i = 0; i < attrs.length; i++) {
+    const attr = attrs[i];
+    const isLast = i === attrs.length - 1;
+    const next = `${current} ${attr}`;
+    const nextWithClose = isLast ? `${next}${close}` : next;
+    const wouldOverflow = nextWithClose.length > printWidth;
+
+    // Always place at least one attribute on the current line when it's still
+    // just the tag open (matches js-beautify / blade-formatter auto).
+    if (!wouldOverflow || current === prefix) {
+      current = next;
+      if (isLast) {
+        lines.push(`${current}${close}`);
+      }
+      continue;
+    }
+
+    lines.push(current);
+    current = `${continuationIndent}${attr}`;
+    if (isLast) {
+      lines.push(`${current}${close}`);
+    }
+  }
+
+  return lines;
+}
+
+/**
+ * Wrap HTML open tags like shufo/blade-formatter (js-beautify wrap_attributes).
+ */
+function wrapLongHtmlTags(
+  lines: string[],
+  printWidth: number,
+  indentSize: number,
+  wrapAttributes: WrapAttributesMode,
+  wrapAttributesMinAttrs: number,
+): string[] {
+  if (wrapAttributes === "preserve" || wrapAttributes === "preserve-aligned") {
+    return lines;
+  }
+
+  const result: string[] = [];
+  let insideScriptStyle = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    if (isScriptStyleOpen(trimmed)) {
+      insideScriptStyle = true;
+      result.push(line);
+      continue;
+    }
+    if (
+      SCRIPT_STYLE_CLOSE.test(line) ||
+      /^<\/(script|style)\s*>/i.test(trimmed)
+    ) {
+      insideScriptStyle = false;
+      result.push(line);
+      continue;
+    }
+    if (insideScriptStyle) {
+      result.push(line);
+      continue;
+    }
+
+    if (!trimmed.startsWith("<") || trimmed.startsWith("</")) {
+      result.push(line);
+      continue;
+    }
+
+    const parsed = parseHtmlOpenTagForWrap(trimmed);
+    if (!parsed) {
+      result.push(line);
+      continue;
+    }
+
+    const attrCount = parsed.attributes.length;
+    const exceedsWidth = line.length > printWidth;
+    const meetsMinAttrs = attrCount >= wrapAttributesMinAttrs;
+
+    let shouldWrap = false;
+    switch (wrapAttributes) {
+      case "auto":
+      case "aligned-multiple":
+        shouldWrap = exceedsWidth && attrCount >= 1;
+        break;
+      case "force":
+      case "force-aligned":
+      case "force-expand-multiline":
+        shouldWrap = meetsMinAttrs;
+        break;
+    }
+
+    if (!shouldWrap) {
+      result.push(line);
+      continue;
+    }
+
+    const leading = line.match(/^(\s*)/)?.[1] || "";
+    const attrIndent = leading + " ".repeat(indentSize);
+    const tagOpen = `${leading}<${parsed.tagName}`;
+    const closeOwnLine = wrapAttributes === "force-expand-multiline";
+    const close = closingBracket(leading, parsed.isSelfClosing, closeOwnLine);
+
+    if (wrapAttributes === "force-expand-multiline") {
+      // <input
+      //     type="text"
+      //     class="foo"
+      // >
+      result.push(tagOpen);
+      for (const attr of parsed.attributes) {
+        result.push(`${attrIndent}${attr}`);
+      }
+      result.push(close);
+      continue;
+    }
+
+    if (wrapAttributes === "force" || wrapAttributes === "force-aligned") {
+      // <input type="text"
+      //     class="foo"
+      //     name="price">
+      // force-aligned aligns continuation under the first attribute.
+      const [first, ...rest] = parsed.attributes;
+      const firstLine = `${tagOpen} ${first}`;
+      if (rest.length === 0) {
+        result.push(
+          `${firstLine}${closingBracket("", parsed.isSelfClosing, false)}`,
+        );
+        continue;
+      }
+
+      const alignedIndent =
+        wrapAttributes === "force-aligned"
+          ? " ".repeat(firstLine.length - first.length)
+          : attrIndent;
+
+      result.push(firstLine);
+      rest.forEach((attr, idx) => {
+        const isLast = idx === rest.length - 1;
+        if (isLast) {
+          result.push(
+            `${alignedIndent}${attr}${closingBracket("", parsed.isSelfClosing, false)}`,
+          );
+        } else {
+          result.push(`${alignedIndent}${attr}`);
+        }
+      });
+      continue;
+    }
+
+    // auto / aligned-multiple: pack attrs to printWidth
+    const continuationIndent =
+      wrapAttributes === "aligned-multiple"
+        ? " ".repeat(Math.min(tagOpen.length + 1, printWidth - 1))
+        : attrIndent;
+    const packed = packAttributesToWidth(
+      tagOpen,
+      parsed.attributes,
+      continuationIndent,
+      printWidth,
+      closingBracket("", parsed.isSelfClosing, false),
+    );
+    result.push(...packed);
+  }
+
+  return result;
+}
+
 // ─── PRE-PROCESSING: Split inline Edge directives to their own lines ─────────
 /**
  * All Edge block directives that should be on their own line.
@@ -1137,7 +1492,15 @@ export class EdgeDocumentFormatter
       lines = collapseShortHtmlBlocks(lines, config.printWidth || 140);
     }
     // Step 6: Apply indentation formatting
-    const formatted = this.formatLines(lines, indentStr, config);
+    let formatted = this.formatLines(lines, indentStr, config);
+    // Step 7: Wrap HTML attrs like blade-formatter (after indent so levels stay correct)
+    formatted = wrapLongHtmlTags(
+      formatted,
+      config.printWidth || 140,
+      config.indentSize,
+      config.wrapAttributes,
+      config.wrapAttributesMinAttrs,
+    );
     const fullRange = new vscode.Range(
       document.positionAt(0),
       document.positionAt(document.getText().length),
