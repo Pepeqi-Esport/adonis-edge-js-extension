@@ -6,7 +6,7 @@ VS Code helpers for AdonisJS routes and Edge templates.
 
 1. [Go to Controller from Route](#1-go-to-controller-from-route)
 2. [Formatter for Edge JS](#2-formatter-for-edge-js)
-3. [Go to File from `publicAsset` / `@vite`](#3-go-to-file-from-publicasset--vite)
+3. [Go to File from `publicAsset` / `@vite` / `@include` / `@component`](#3-go-to-file-from-publicasset--vite--include--component)
 4. [Edge Spacer](#4-edge-spacer)
 
 ---
@@ -98,11 +98,14 @@ Built-in formatter for `.edge` templates — use Shift+Alt+F, Format Document, o
 
 ---
 
-### 3. Go to File from `publicAsset` / `@vite`
+### 3. Go to File from `publicAsset` / `@vite` / `@include` / `@component`
 
-In `.edge` files, `editor.links` is off by default so relative HTML `href` / `src` / `action` values (e.g. `/logout`, `/assets/...`) are **not** underlined as follow-links.
+In `.edge` files, `editor.links` is off by default so relative HTML `href` / `src` / `action` values (e.g. `/logout`, `/assets/...`) are **not** underlined.
 
-Helper paths use **Ctrl/Cmd+Click** (Go to Definition). Absolute `http://` / `https://` values in HTML URL attributes open via hover → **Open URL**.
+Only these get link-style underlines:
+
+* `publicAsset('...')` / `@vite('...')` / `@include('...')` / `@component('...')` — Ctrl/Cmd+Click opens the file
+* Absolute `http://` / `https://` in HTML URL attrs — hover → **Open URL**
 
 #### `publicAsset`
 
@@ -121,9 +124,28 @@ Then use it in templates:
 <img src="{{ publicAsset('assets/dashboard/custom/image/logo/logo.png') }}" width="80">
 ```
 
-* Ctrl/Cmd+Click: `assets/dashboard/custom/image/logo/logo.png`
-* Opens: `public/assets/dashboard/custom/image/logo/logo.png`
+* Underlined; Ctrl/Cmd+Click opens `public/assets/dashboard/custom/image/logo/logo.png`
 * Leading `/` is optional
+
+#### `url`
+
+Register the Edge global helper (absolute URL from your app base URL):
+
+```typescript
+edge.global("url", (path: string = "") => {
+  const baseUrl = appUrl.replace(/\/$/, "");
+  const cleanPath = path.replace(/^\/+/, "");
+
+  return cleanPath ? `${baseUrl}/${cleanPath}` : baseUrl;
+});
+```
+
+Then use it in templates:
+
+```edge
+<img src="{{ url('assets/dashboard/custom/image/logo/logo.png') }}" width="80">
+<a href="{{ url('dashboard') }}">Dashboard</a>
+```
 
 #### `@vite`
 
@@ -132,8 +154,18 @@ Then use it in templates:
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 ```
 
-* Ctrl/Cmd+Click each path string inside `@vite(...)`
-* Opens: path from the project root (not under `public/`)
+* Each path string is underlined; Ctrl/Cmd+Click opens it from the project root
+
+#### `@include` / `@component`
+
+```edge
+@include('dashboard/partials/sidebar')
+@component('dashboard/layouts/main')
+@!component('dashboard/layouts/main')
+```
+
+* Underlined; Ctrl/Cmd+Click opens `resources/views/<path>.edge` (default disk)
+* Disk prefix supported: `docs::guide/intro` → disk `docs` from `edge.disks`
 
 #### Absolute HTML URLs
 
@@ -141,8 +173,8 @@ Then use it in templates:
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans&display=swap" rel="stylesheet">
 ```
 
-* Hover the URL → **Open URL** (opens in the browser)
-* Relative attrs like `href="/dashboard"`, `src="/assets/..."`, `action="/logout"` are not linked
+* Underlined; hover → **Open URL**
+* Relative attrs like `href="/dashboard"`, `src="/assets/..."`, `action="/logout"` stay plain (no underline)
 
 ---
 
@@ -163,7 +195,8 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 * Routes: barrel / lazy import / magic string → controller via `package.json#imports`
 * Edge formatter: document / range / on-type formatting for `.edge` files
 * Edge: `editor.links` off — relative HTML attrs are not follow-linked
-* Edge: `publicAsset` / `@vite` → Go to Definition; absolute `http(s)` HTML attrs → hover Open URL
+* Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / absolute `http(s)`
+* Edge: those helpers → Go to Definition; absolute `http(s)` → hover Open URL
 * Edge spacer: watches typing of `{{ }}` / `{{{ }}}` and expands with spaces
 
 ## Requirements
@@ -183,7 +216,7 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 ## Limitations
 
 * Only `#controllers/*` (and `#generated/controllers` for barrels) — not `@controllers`
-* `publicAsset` resolves under `public/`; `@vite` resolves from the project root
+* `publicAsset` → `public/`; `@vite` → project root; `@include` / `@component` → `edge.disks` (default `resources/views`)
 * Relative HTML `href` / `src` / `action` are not navigable; only absolute `http(s)` URLs get hover Open URL
 * This package does not include an Edge TextMate grammar — install a separate Edge highlighter if you want colors
 * Simple `@if` / `@else` plain-text branches may be rewritten to ternaries on format

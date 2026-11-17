@@ -1,8 +1,8 @@
 {
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
-  "description": "AdonisJS toolkit: route→controller navigation, Edge formatter, publicAsset/@vite navigation, and Edge spacer",
-  "version": "1.1.0",
+  "description": "Adonis Edge JS Extension for VS Code",
+  "version": "1.2.0",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
@@ -96,6 +96,16 @@
           "type": "boolean",
           "default": false,
           "description": "Automatically convert HTML comments (<!-- -->) to Edge comments ({{-- --}}) on save"
+        },
+        "edge.disks": {
+          "type": "object",
+          "additionalProperties": {
+            "type": "string"
+          },
+          "default": {
+            "default": "resources/views"
+          },
+          "description": "Edge view disks for @include / @component navigation (path relative to project root)"
         }
       }
     },

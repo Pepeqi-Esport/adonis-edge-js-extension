@@ -2,12 +2,13 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 
+type PathKind = "public" | "project" | "view";
+
 interface PathMatch {
   path: string;
   /** Absolute offset of the first character of the path (inside quotes) */
   pathOffset: number;
-  /** Resolve under public/ when true; otherwise from project root */
-  underPublic: boolean;
+  kind: PathKind;
 }
 
 interface AbsoluteUrlMatch {
@@ -17,13 +18,17 @@ interface AbsoluteUrlMatch {
 }
 
 const OPEN_EXTERNAL_URL_COMMAND = "edge.openExternalUrl";
+const DEFAULT_VIEW_DISKS: Record<string, string> = {
+  default: "resources/views",
+};
 
 /**
  * Path helpers and absolute http(s) URL navigation for Edge templates.
  *
  * editor.links is disabled for [edge] so HTML Language Service relative
- * href/src/action underlines are suppressed. Navigation is restored via:
- * - DefinitionProvider for publicAsset / @vite → local files
+ * href/src/action underlines are suppressed. Instead we:
+ * - Draw link-style underlines for publicAsset / @vite / @include / @component / absolute http(s)
+ * - DefinitionProvider for those helpers → local files
  * - HoverProvider for absolute http(s) HTML attribute URLs → open external
  */
 export class EdgePathNavigator {
@@ -32,6 +37,10 @@ export class EdgePathNavigator {
 
   private static readonly VITE_CALL_PATTERN = /@vite\s*\(/g;
 
+  /** @include('...') / @component('...') / @!component('...') */
+  private static readonly VIEW_DIRECTIVE_PATTERN =
+    /@!?component\s*\(|@include\s*\(/g;
+
   /** href / src / action / formaction / poster / data-src / data-href */
   private static readonly HTML_URL_ATTR_PATTERN =
     /\b(?:href|src|action|formaction|poster|data-src|data-href)\s*=\s*(['"])([^'"]*)\1/gi;
@@ -39,7 +48,11 @@ export class EdgePathNavigator {
   private static readonly ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
 
   findHelperPaths(text: string): PathMatch[] {
-    return [...this.findPublicHelperPaths(text), ...this.findVitePaths(text)];
+    return [
+      ...this.findPublicHelperPaths(text),
+      ...this.findVitePaths(text),
+      ...this.findViewDirectivePaths(text),
+    ];
   }
 
   findAbsoluteHtmlUrls(text: string): AbsoluteUrlMatch[] {
@@ -67,14 +80,18 @@ export class EdgePathNavigator {
   resolveFile(
     projectRoot: string,
     assetPath: string,
-    underPublic: boolean,
+    kind: PathKind,
   ): string | null {
+    if (kind === "view") {
+      return this.resolveViewFile(projectRoot, assetPath);
+    }
+
     const relative = assetPath.replace(/^\/+/, "");
     if (!relative) {
       return null;
     }
 
-    return underPublic
+    return kind === "public"
       ? path.join(projectRoot, "public", relative)
       : path.join(projectRoot, relative);
   }
@@ -89,6 +106,51 @@ export class EdgePathNavigator {
       currentDir = path.dirname(currentDir);
     }
     return null;
+  }
+
+  private getViewDisks(): Record<string, string> {
+    const configured = vscode.workspace
+      .getConfiguration("edge")
+      .get<Record<string, string>>("disks");
+    if (configured && typeof configured === "object") {
+      return { ...DEFAULT_VIEW_DISKS, ...configured };
+    }
+    return DEFAULT_VIEW_DISKS;
+  }
+
+  /**
+   * `dashboard/partials/sidebar` → resources/views/dashboard/partials/sidebar.edge
+   * `docs::guide/intro` → disk "docs" path + guide/intro.edge
+   */
+  private resolveViewFile(
+    projectRoot: string,
+    templatePath: string,
+  ): string | null {
+    const trimmed = templatePath.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const disks = this.getViewDisks();
+    let diskName = "default";
+    let viewPath = trimmed;
+
+    const diskSep = trimmed.indexOf("::");
+    if (diskSep !== -1) {
+      diskName = trimmed.slice(0, diskSep) || "default";
+      viewPath = trimmed.slice(diskSep + 2);
+    }
+
+    const diskRoot = disks[diskName] ?? disks.default;
+    if (!diskRoot || !viewPath) {
+      return null;
+    }
+
+    const withExt = viewPath.toLowerCase().endsWith(".edge")
+      ? viewPath
+      : `${viewPath}.edge`;
+
+    return path.join(projectRoot, diskRoot, withExt.replace(/^\/+/, ""));
   }
 
   private findPublicHelperPaths(text: string): PathMatch[] {
@@ -110,7 +172,7 @@ export class EdgePathNavigator {
       matches.push({
         path: assetPath,
         pathOffset: pathLiteralOffset,
-        underPublic: true,
+        kind: "public",
       });
     }
 
@@ -147,9 +209,49 @@ export class EdgePathNavigator {
         matches.push({
           path: vitePath,
           pathOffset: argsStart + strMatch.index + 1,
-          underPublic: false,
+          kind: "project",
         });
       }
+    }
+
+    return matches;
+  }
+
+  /**
+   * First quoted template path inside @include(...) / @component(...) /
+   * @!component(...).
+   */
+  private findViewDirectivePaths(text: string): PathMatch[] {
+    const matches: PathMatch[] = [];
+    const callPattern = new RegExp(
+      EdgePathNavigator.VIEW_DIRECTIVE_PATTERN.source,
+      EdgePathNavigator.VIEW_DIRECTIVE_PATTERN.flags,
+    );
+
+    let call: RegExpExecArray | null;
+    while ((call = callPattern.exec(text)) !== null) {
+      const argsStart = call.index + call[0].length;
+      const argsEnd = this.findMatchingParen(text, argsStart - 1);
+      if (argsEnd === -1) {
+        continue;
+      }
+
+      const args = text.slice(argsStart, argsEnd);
+      const firstString = /^\s*(['"])([^'"]+)\1/.exec(args);
+      if (!firstString) {
+        continue;
+      }
+
+      const viewPath = firstString[2];
+      if (!viewPath.trim()) {
+        continue;
+      }
+
+      matches.push({
+        path: viewPath,
+        pathOffset: argsStart + firstString.index + firstString[0].indexOf(viewPath),
+        kind: "view",
+      });
     }
 
     return matches;
@@ -188,7 +290,18 @@ export class EdgePathNavigator {
   }
 }
 
-/** Ctrl/Cmd+Click publicAsset / @vite path strings → local files. */
+/** True when the document is a .edge file or the editor language mode is Edge. */
+function isEdgeFile(document: vscode.TextDocument): boolean {
+  if (document.uri.scheme !== "file" && document.uri.scheme !== "untitled") {
+    return false;
+  }
+  return (
+    document.languageId === "edge" ||
+    document.fileName.toLowerCase().endsWith(".edge")
+  );
+}
+
+/** Ctrl/Cmd+Click publicAsset / @vite / @include / @component → local files. */
 export class EdgePathDefinitionProvider implements vscode.DefinitionProvider {
   constructor(private readonly navigator: EdgePathNavigator) {}
 
@@ -197,6 +310,10 @@ export class EdgePathDefinitionProvider implements vscode.DefinitionProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Definition> {
+    if (!isEdgeFile(document)) {
+      return null;
+    }
+
     const projectRoot = this.navigator.findProjectRoot(document.uri.fsPath);
     if (!projectRoot) {
       return null;
@@ -215,7 +332,7 @@ export class EdgePathDefinitionProvider implements vscode.DefinitionProvider {
       const targetPath = this.navigator.resolveFile(
         projectRoot,
         match.path,
-        match.underPublic,
+        match.kind,
       );
       if (!targetPath) {
         return null;
@@ -243,6 +360,10 @@ export class EdgeAbsoluteUrlHoverProvider implements vscode.HoverProvider {
     position: vscode.Position,
     _token: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.Hover> {
+    if (!isEdgeFile(document)) {
+      return null;
+    }
+
     const offset = document.offsetAt(position);
     const matches = this.navigator.findAbsoluteHtmlUrls(document.getText());
 
@@ -271,14 +392,127 @@ export class EdgeAbsoluteUrlHoverProvider implements vscode.HoverProvider {
   }
 }
 
+/**
+ * Link-style underlines for publicAsset / @vite / @include / @component /
+ * absolute http(s) only. Avoids re-enabling editor.links (relative HTML links).
+ */
+class EdgeLinkUnderlineDecorator {
+  private readonly decorationType: vscode.TextEditorDecorationType;
+  private readonly debounceTimers = new Map<string, NodeJS.Timeout>();
+
+  constructor(private readonly navigator: EdgePathNavigator) {
+    this.decorationType = vscode.window.createTextEditorDecorationType({
+      // Underline only — keep text color; offset adds a little gap below glyphs.
+      // Semicolon hack: VS Code wraps this as `text-decoration: …`, so the
+      // second declaration lands in the same CSS rule.
+      textDecoration:
+        "underline solid currentColor; text-underline-offset: 3px",
+    });
+  }
+
+  register(context: vscode.ExtensionContext): void {
+    context.subscriptions.push(
+      this.decorationType,
+      vscode.window.onDidChangeActiveTextEditor((editor) => {
+        if (editor) {
+          this.updateEditor(editor);
+        }
+      }),
+      vscode.workspace.onDidChangeTextDocument((event) => {
+        const editor = vscode.window.visibleTextEditors.find(
+          (e) => e.document === event.document,
+        );
+        if (editor && this.isEdgeDocument(editor.document)) {
+          this.scheduleUpdate(editor);
+        }
+      }),
+      vscode.window.onDidChangeVisibleTextEditors((editors) => {
+        for (const editor of editors) {
+          this.updateEditor(editor);
+        }
+      }),
+    );
+
+    for (const editor of vscode.window.visibleTextEditors) {
+      this.updateEditor(editor);
+    }
+  }
+
+  private isEdgeDocument(document: vscode.TextDocument): boolean {
+    return isEdgeFile(document);
+  }
+
+  private scheduleUpdate(editor: vscode.TextEditor): void {
+    const key = editor.document.uri.toString();
+    const existing = this.debounceTimers.get(key);
+    if (existing) {
+      clearTimeout(existing);
+    }
+    this.debounceTimers.set(
+      key,
+      setTimeout(() => {
+        this.debounceTimers.delete(key);
+        this.updateEditor(editor);
+      }, 150),
+    );
+  }
+
+  private updateEditor(editor: vscode.TextEditor): void {
+    if (!this.isEdgeDocument(editor.document)) {
+      editor.setDecorations(this.decorationType, []);
+      return;
+    }
+
+    const document = editor.document;
+    const text = document.getText();
+    const ranges: vscode.Range[] = [];
+
+    const projectRoot = this.navigator.findProjectRoot(document.uri.fsPath);
+    if (projectRoot) {
+      for (const match of this.navigator.findHelperPaths(text)) {
+        const target = this.navigator.resolveFile(
+          projectRoot,
+          match.path,
+          match.kind,
+        );
+        if (!target) {
+          continue;
+        }
+        ranges.push(
+          new vscode.Range(
+            document.positionAt(match.pathOffset),
+            document.positionAt(match.pathOffset + match.path.length),
+          ),
+        );
+      }
+    }
+
+    for (const match of this.navigator.findAbsoluteHtmlUrls(text)) {
+      ranges.push(
+        new vscode.Range(
+          document.positionAt(match.urlOffset),
+          document.positionAt(match.urlOffset + match.url.length),
+        ),
+      );
+    }
+
+    editor.setDecorations(this.decorationType, ranges);
+  }
+}
+
 export function registerEdgePathNavigation(
   context: vscode.ExtensionContext,
 ): void {
   const navigator = new EdgePathNavigator();
+  // .edge files OR language mode "edge" (either condition is enough).
   const edgeSelectors: vscode.DocumentSelector = [
     { language: "edge", scheme: "file" },
+    { language: "edge", scheme: "untitled" },
     { pattern: "**/*.edge", scheme: "file" },
   ];
+
+  const underlineDecorator = new EdgeLinkUnderlineDecorator(navigator);
+  underlineDecorator.register(context);
 
   context.subscriptions.push(
     vscode.commands.registerCommand(
