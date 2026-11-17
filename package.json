@@ -2,7 +2,7 @@
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
   "description": "Adonis Edge JS Extension for VS Code",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
@@ -72,10 +72,16 @@
           "default": 4,
           "description": "Number of spaces per indentation level"
         },
+        "edge.format.printWidth": {
+          "type": "number",
+          "default": 140,
+          "description": "Maximum line length (like Prettier printWidth) before wrapping attributes / collapsing short blocks"
+        },
         "edge.format.wrapLineLength": {
           "type": "number",
-          "default": 120,
-          "description": "Maximum line length before wrapping attributes / collapsing short blocks"
+          "default": 140,
+          "description": "Deprecated alias for edge.format.printWidth",
+          "deprecationMessage": "Use edge.format.printWidth instead"
         },
         "edge.format.collapseShortBlocks": {
           "type": "boolean",

@@ -4,7 +4,8 @@ interface EdgeFormatConfig {
   indentSize: number;
   preserveNewLines: boolean;
   maxPreserveNewLines: number;
-  wrapLineLength: number;
+  /** Like Prettier printWidth — max line length for wrapping / short-block collapse. */
+  printWidth: number;
   /** When true, collapse short label/button/etc. blocks onto one line. Off by default. */
   collapseShortBlocks: boolean;
 }
@@ -144,11 +145,16 @@ const CSS_OPEN_BRACE = /\{\s*$/;
 const CSS_CLOSE_BRACE = /^\s*\}/;
 function getConfig(): EdgeFormatConfig {
   const config = vscode.workspace.getConfiguration("edge.format");
+  // Prefer printWidth (Prettier-style); fall back to deprecated wrapLineLength.
+  const printWidth =
+    config.get<number>("printWidth") ??
+    config.get<number>("wrapLineLength") ??
+    140;
   return {
     indentSize: config.get("indentSize", 4),
     preserveNewLines: config.get("preserveNewLines", true),
     maxPreserveNewLines: config.get("maxPreserveNewLines", 2),
-    wrapLineLength: config.get("wrapLineLength", 120),
+    printWidth,
     collapseShortBlocks: config.get("collapseShortBlocks", false),
   };
 }
@@ -791,12 +797,12 @@ function quoteTernaryValue(value: string): string {
  * - Only ONE non-empty content line between open and close tags
  * - Content must be short (< 60 chars)
  * - No nested HTML tags or Edge block directives in content
- * - Collapsed result must be under wrapLineLength (default 120)
+ * - Collapsed result must be under printWidth (default 140)
  * - Close tag must match the open tag
  */
 function collapseShortHtmlBlocks(
   lines: string[],
-  wrapLineLength = 120,
+  printWidth = 140,
 ): string[] {
   const result = [];
   let i = 0;
@@ -883,7 +889,7 @@ function collapseShortHtmlBlocks(
         const leadingWs = lines[i].match(/^(\s*)/)?.[1] || "";
         const collapsed = `${trimmed}${contentLine}</${tagName}>`;
         // Only collapse if result isn't too long
-        if (collapsed.length <= wrapLineLength) {
+        if (collapsed.length <= printWidth) {
           result.push(leadingWs + collapsed);
           i = closeLineIdx + 1;
           continue;
@@ -1128,7 +1134,7 @@ export class EdgeDocumentFormatter
     lines = convertSimpleIfElseToTernary(lines);
     // Step 5: Optionally collapse short HTML blocks (off by default)
     if (config.collapseShortBlocks) {
-      lines = collapseShortHtmlBlocks(lines, config.wrapLineLength || 120);
+      lines = collapseShortHtmlBlocks(lines, config.printWidth || 140);
     }
     // Step 6: Apply indentation formatting
     const formatted = this.formatLines(lines, indentStr, config);

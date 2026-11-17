@@ -91,6 +91,7 @@ Built-in formatter for `.edge` templates — use Shift+Alt+F, Format Document, o
     "editor.links": false
   },
   "edge.format.indentSize": 4,
+  "edge.format.printWidth": 140,
   "edge.format.collapseShortBlocks": false,
   "edge.format.convertHtmlCommentsOnSave": false
 }
