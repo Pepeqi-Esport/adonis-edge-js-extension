@@ -17,18 +17,18 @@ Ctrl/Cmd+Click in route files to jump to controller files and methods.
 
 #### Supported Files
 
-* `**/routes/**/*.ts` — route modules
-* `**/routes/*.ts` — flat routes folders
-* `**/start/routes.ts` — main routes file
+- `**/routes/**/*.ts` — route modules
+- `**/routes/*.ts` — flat routes folders
+- `**/start/routes.ts` — main routes file
 
 #### Supported Click Targets
 
 1. **Barrel controllers (AdonisJS generated)** — click method or property
 
 ```typescript
-import { controllers } from '#generated/controllers'
+import { controllers } from "#generated/controllers";
 
-router.get('/posts', [controllers.Posts, 'index'])
+router.get("/posts", [controllers.Posts, "index"]);
 // Click 'index' → posts_controller.ts method index
 // Click Posts  → posts_controller.ts
 ```
@@ -36,16 +36,17 @@ router.get('/posts', [controllers.Posts, 'index'])
 2. **Lazy-imported controller variables**
 
 ```typescript
-const AuthController = () => import('#controllers/dashboard/auth/auth_controller')
+const AuthController = () =>
+  import("#controllers/dashboard/auth/auth_controller");
 
-router.get('/login', [AuthController, 'login'])
+router.get("/login", [AuthController, "login"]);
 // Click 'login' or AuthController → auth_controller.ts (method when clicking the string)
 ```
 
 3. **Magic strings** — click path or method inside one string
 
 ```typescript
-router.get('/', '#controllers/dashboard/auth/auth_controller.index')
+router.get("/", "#controllers/dashboard/auth/auth_controller.index");
 // Click path   → auth_controller.ts
 // Click index  → auth_controller.ts method index
 ```
@@ -53,7 +54,7 @@ router.get('/', '#controllers/dashboard/auth/auth_controller.index')
 4. **`#controllers/...` import path strings**
 
 ```typescript
-const UserController = () => import('#controllers/user_controller')
+const UserController = () => import("#controllers/user_controller");
 // Click '#controllers/user_controller'
 ```
 
@@ -85,10 +86,10 @@ Example with `auto` + `printWidth` 140:
 
 #### Also
 
-* Auto-align `@end` / `@endsection` while typing
-* Command / context menu: **Edge: Convert HTML Comments to Edge Comments**
-* Optional convert HTML comments → `{{-- --}}` on save
-* Default indent / tab size: **4**
+- Auto-align `@end` / `@endsection` while typing
+- Command / context menu: **Edge: Convert HTML Comments to Edge Comments**
+  {{--  --}}l convert HTML comments → `{{-- --}}` on save
+- Default indent / tab size: **4**
 
 ```json
 // .vscode/settings.json
@@ -116,18 +117,18 @@ In `.edge` files, `editor.links` is off by default so relative HTML `href` / `sr
 
 Only these get link-style underlines:
 
-* `publicAsset('...')` / `@vite('...')` / `@include('...')` / `@component('...')` — Ctrl/Cmd+Click opens the file
-* Absolute `http://` / `https://` in HTML URL attrs — hover → **Open URL**
+- `publicAsset('...')` / `@vite('...')` / `@include('...')` / `@component('...')` — Ctrl/Cmd+Click opens the file
+- Absolute `http://` / `https://` in HTML URL attrs — hover → **Open URL**
 
 #### `publicAsset`
 
 Register the Edge global helper in your app (e.g. a provider / Edge setup):
 
 ```typescript
-edge.global('publicAsset', (path: string) => {
-  const cleanPath = path.startsWith('/') ? path : `/${path}`
-  return cleanPath
-})
+edge.global("publicAsset", (path: string) => {
+  const cleanPath = path.startsWith("/") ? path : `/${path}`;
+  return cleanPath;
+});
 ```
 
 Then use it in templates:
@@ -136,8 +137,8 @@ Then use it in templates:
 <img src="{{ publicAsset('assets/dashboard/custom/image/logo/logo.png') }}" width="80">
 ```
 
-* Underlined; Ctrl/Cmd+Click opens `public/assets/dashboard/custom/image/logo/logo.png`
-* Leading `/` is optional
+- Underlined; Ctrl/Cmd+Click opens `public/assets/dashboard/custom/image/logo/logo.png`
+- Leading `/` is optional
 
 #### `url`
 
@@ -166,7 +167,7 @@ Then use it in templates:
 @vite(['resources/css/app.css', 'resources/js/app.js'])
 ```
 
-* Each path string is underlined; Ctrl/Cmd+Click opens it from the project root
+- Each path string is underlined; Ctrl/Cmd+Click opens it from the project root
 
 #### `@include` / `@component`
 
@@ -176,8 +177,8 @@ Then use it in templates:
 @!component('dashboard/layouts/main')
 ```
 
-* Underlined; Ctrl/Cmd+Click opens `resources/views/<path>.edge` (default disk)
-* Disk prefix supported: `docs::guide/intro` → disk `docs` from `edge.disks`
+- Underlined; Ctrl/Cmd+Click opens `resources/views/<path>.edge` (default disk)
+- Disk prefix supported: `docs::guide/intro` → disk `docs` from `edge.disks`
 
 #### Absolute HTML URLs
 
@@ -185,8 +186,8 @@ Then use it in templates:
 <link href="https://fonts.googleapis.com/css2?family=Public+Sans&display=swap" rel="stylesheet">
 ```
 
-* Underlined; hover → **Open URL**
-* Relative attrs like `href="/dashboard"`, `src="/assets/..."`, `action="/logout"` stay plain (no underline)
+- Underlined; hover → **Open URL**
+- Relative attrs like `href="/dashboard"`, `src="/assets/..."`, `action="/logout"` stay plain (no underline)
 
 ---
 
@@ -194,8 +195,8 @@ Then use it in templates:
 
 Typing Edge mustache tags auto-inserts inner spaces for easier editing:
 
-* `{{}}` → `{{ | }}` (escaped)
-* `{{{}}}` → `{{{ | }}}` (unescaped)
+- `{{}}` → `{{ | }}` (escaped)
+- `{{{}}}` → `{{{ | }}}` (unescaped)
 
 Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` → `}}}`).
 
@@ -203,20 +204,20 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 
 ## How It Works
 
-* Resolves within the project root (nearest `package.json`)
-* Routes: barrel / lazy import / magic string → controller via `package.json#imports`
-* Edge formatter: document / range / on-type formatting for `.edge` files
-* Edge: `editor.links` off — relative HTML attrs are not follow-linked
-* Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / absolute `http(s)`
-* Edge: those helpers → Go to Definition; absolute `http(s)` → hover Open URL
-* Edge spacer: watches typing of `{{ }}` / `{{{ }}}` and expands with spaces
+- Resolves within the project root (nearest `package.json`)
+- Routes: barrel / lazy import / magic string → controller via `package.json#imports`
+- Edge formatter: document / range / on-type formatting for `.edge` files
+- Edge: `editor.links` off — relative HTML attrs are not follow-linked
+- Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / absolute `http(s)`
+- Edge: those helpers → Go to Definition; absolute `http(s)` → hover Open URL
+- Edge spacer: watches typing of `{{ }}` / `{{{ }}}` and expands with spaces
 
 ## Requirements
 
-* VS Code 1.75.0 or later
-* AdonisJS project with TypeScript (for route goto)
-* `package.json#imports` mapping for `#controllers/*`
-* For barrel style: generated `.adonisjs/server/controllers.ts` (or `#generated/*` import map)
+- VS Code 1.75.0 or later
+- AdonisJS project with TypeScript (for route goto)
+- `package.json#imports` mapping for `#controllers/*`
+- For barrel style: generated `.adonisjs/server/controllers.ts` (or `#generated/*` import map)
 
 ## Installation
 
@@ -227,8 +228,8 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 
 ## Limitations
 
-* Only `#controllers/*` (and `#generated/controllers` for barrels) — not `@controllers`
-* `publicAsset` → `public/`; `@vite` → project root; `@include` / `@component` → `edge.disks` (default `resources/views`)
-* Relative HTML `href` / `src` / `action` are not navigable; only absolute `http(s)` URLs get hover Open URL
-* This package does not include an Edge TextMate grammar — install a separate Edge highlighter if you want colors
-* Simple `@if` / `@else` plain-text branches may be rewritten to ternaries on format
+- Only `#controllers/*` (and `#generated/controllers` for barrels) — not `@controllers`
+- `publicAsset` → `public/`; `@vite` → project root; `@include` / `@component` → `edge.disks` (default `resources/views`)
+- Relative HTML `href` / `src` / `action` are not navigable; only absolute `http(s)` URLs get hover Open URL
+- This package does not include an Edge TextMate grammar — install a separate Edge highlighter if you want colors
+- Simple `@if` / `@else` plain-text branches may be rewritten to ternaries on format
