@@ -3,6 +3,7 @@ import { AdonisRoutesDefinitionProvider } from "./definitionProvider";
 import { registerEdgePathNavigation } from "./edgeDocumentLinkProvider";
 import { registerEdgeSpacer } from "./edgeSpacer";
 import { registerEdgeFormatter } from "./edgeFormatter";
+import { registerGenerateModule } from "./generateModule";
 
 export function activate(context: vscode.ExtensionContext) {
   const routesProvider = new AdonisRoutesDefinitionProvider();
@@ -25,6 +26,7 @@ export function activate(context: vscode.ExtensionContext) {
   registerEdgePathNavigation(context);
   registerEdgeSpacer(context);
   registerEdgeFormatter(context);
+  registerGenerateModule(context);
 }
 
 export function deactivate() {}

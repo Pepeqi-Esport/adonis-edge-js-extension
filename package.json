@@ -2,7 +2,7 @@
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
   "description": "Adonis Edge JS Extension for VS Code",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
@@ -18,7 +18,8 @@
   ],
   "activationEvents": [
     "onLanguage:typescript",
-    "workspaceContains:**/*.edge"
+    "workspaceContains:**/*.edge",
+    "onCommand:adonis-edge.generateModule"
   ],
   "contributes": {
     "languages": [
@@ -48,6 +49,10 @@
       {
         "command": "edge.openExternalUrl",
         "title": "Edge: Open External URL"
+      },
+      {
+        "command": "adonis-edge.generateModule",
+        "title": "Ace: Generate Module"
       }
     ],
     "menus": {

@@ -1,0 +1,194 @@
+import { HttpContext } from "@adonisjs/core/http";
+import db from "@adonisjs/lucid/services/db";
+import { Datatables } from "@codenameryuu/adonis-datatable";
+
+import HashHelper from "#helpers/hash_helper";
+import LogHelper from "#helpers/log_helper";
+import MessageHelper from "#helpers/message_helper";
+
+import {{ name }} from "#models/{{ snakeName }}";
+
+export default class {{ name }}Service {
+  /**
+   ** Index service
+   *
+   * @param ctx
+   * @return object
+   */
+  public async index(ctx: HttpContext) {
+    let filter = {
+      //
+    };
+
+    return {
+      status: true,
+      message: MessageHelper.retrieveSuccess(),
+      filter: filter,
+    };
+  }
+
+  /**
+   ** Store service
+   *
+   * @param ctx
+   * @return object
+   */
+  public async store(ctx: HttpContext) {
+    let trx = await db.transaction();
+
+    try {
+      await {{ name }}.create({
+        //
+      });
+
+      await trx.commit();
+
+      return {
+        status: true,
+        statusNotify: "success",
+        message: MessageHelper.saveSuccess(),
+      };
+    } catch (error) {
+      await trx.rollback();
+
+      LogHelper.errorLog(ctx, error);
+
+      return {
+        status: false,
+        statusNotify: "danger",
+        message: MessageHelper.saveFail(),
+      };
+    }
+  }
+
+  /**
+   ** Edit service
+   *
+   * @param ctx
+   * @return object
+   */
+  public async edit(ctx: HttpContext) {
+    let {{ camelName }}Id = HashHelper.decrypt(ctx.request.param("{{ camelName }}Id"));
+
+    let {{ camelName }} = await {{ name }}.findBy("id", {{ camelName }}Id);
+
+    return {
+      status: true,
+      message: MessageHelper.retrieveSuccess(),
+      {{ camelName }}: {{ camelName }},
+    };
+  }
+
+  /**
+   ** Update service
+   *
+   * @param ctx
+   * @return object
+   */
+  public async update(ctx: HttpContext) {
+    let trx = await db.transaction();
+
+    try {
+      let {{ camelName }}Id = HashHelper.decrypt(ctx.request.param("{{ camelName }}Id"));
+
+      await {{ name }}.query()
+        .where("id", {{ camelName }}Id)
+        .update({
+          //
+        });
+
+      await trx.commit();
+
+      return {
+        status: true,
+        statusNotify: "success",
+        message: MessageHelper.saveSuccess(),
+      };
+    } catch (error) {
+      await trx.rollback();
+
+      LogHelper.errorLog(ctx, error);
+
+      return {
+        status: false,
+        statusNotify: "danger",
+        message: MessageHelper.saveFail(),
+      };
+    }
+  }
+
+  /**
+   ** Delete service
+   *
+   * @param ctx
+   * @return object
+   */
+  public async delete(ctx: HttpContext) {
+    let {{ camelName }}Id = HashHelper.decrypt(ctx.request.param("{{ camelName }}Id"));
+
+    await {{ name }}.softDelete({{ name }}.query().where("id", {{ camelName }}Id));
+
+    return {
+      status: true,
+      statusNotify: "success",
+      message: MessageHelper.deleteSuccess(),
+    };
+  }
+
+  // * =========================================================================================================================
+  // * Async
+  // * =========================================================================================================================
+
+  /**
+   ** Datatable service
+   *
+   * @param ctx
+   * @return object
+   */
+  public async getDatatable(ctx: HttpContext) {
+    let {{ camelName }} = {{ name }}.query().select("{{ tableName }}.*").orderBy("id", "desc");
+
+    let datatable = await Datatables.lucid({{ camelName }})
+      .setContext(ctx)
+      .addIndexColumn()
+      .addColumn("action", (row) => {
+        let editButton = `
+          <a class="dropdown-item text-success" href="/dashboard/{{ kebabName }}/edit/${row.hashId}">
+              <i class="icon-base ti tabler-edit me-1"></i>
+              Ubah
+          </a>
+        `;
+
+        let deleteButton = `
+          <a class="dropdown-item text-danger" href="javascript:void(0)" onclick="confirmDelete('${row.hashId}')">
+              <i class="icon-base ti tabler-trash me-1"></i>
+              Hapus
+          </a>
+        `;
+
+        let result = `
+          <div class="dropdown">
+              <button type="button" class="btn p-0 dropdown-toggle hide-arrow" data-bs-toggle="dropdown">
+                  <i class="icon-base ti tabler-dots-vertical"></i>
+              </button>
+
+              <div class="dropdown-menu">
+                  ${editButton}
+
+                  ${deleteButton}
+              </div>
+          </div>
+        `;
+
+        return result;
+      })
+      .escapeColumns()
+      .results();
+
+    return {
+      status: true,
+      message: MessageHelper.retrieveSuccess(),
+      datatable: datatable,
+    };
+  }
+}

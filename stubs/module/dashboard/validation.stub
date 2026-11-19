@@ -1,0 +1,206 @@
+import { HttpContext } from "@adonisjs/core/http";
+import vine, { SimpleMessagesProvider } from "@vinejs/vine";
+
+import ErrorHelper from "#helpers/error_helper";
+import HashHelper from "#helpers/hash_helper";
+import MessageHelper from "#helpers/message_helper";
+
+export default class {{ name }}Validation {
+  /**
+   ** Store validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async store(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        //
+      });
+
+      let data = {
+        //
+      };
+
+      let errorMessage = {
+        //
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        statusNotify: "success",
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getFirstErrorMessage(ctx, error);
+
+      return {
+        status: false,
+        statusNotify: "danger",
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Edit validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async edit(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        {{ snakeName }}_id: vine.number().min(1).withoutDecimals().exists({
+          table: "{{ tableName }}",
+          column: "id",
+          filter: (query) => {
+            query.whereNull("deleted_at");
+          },
+        }),
+      });
+
+      let data = {
+        {{ snakeName }}_id: HashHelper.decrypt(ctx.request.param("{{ camelName }}Id")),
+      };
+
+      let errorMessage = {
+        "{{ snakeName }}_id.number": "ID {{ labelName }} harus berupa angka !",
+        "{{ snakeName }}_id.required": "ID {{ labelName }} tidak boleh kosong !",
+        "{{ snakeName }}_id.min": "ID {{ labelName }} harus minimal 1 !",
+        "{{ snakeName }}_id.withoutDecimals": "ID {{ labelName }} harus berupa angka bulat !",
+        "{{ snakeName }}_id.exists": "ID {{ labelName }} tidak ditemukan !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        statusNotify: "success",
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getFirstErrorMessage(ctx, error);
+
+      return {
+        status: false,
+        statusNotify: "danger",
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Update validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async update(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        {{ snakeName }}_id: vine.number().min(1).withoutDecimals().exists({
+          table: "{{ tableName }}",
+          column: "id",
+          filter: (query) => {
+            query.whereNull("deleted_at");
+          },
+        }),
+      });
+
+      let data = {
+        {{ snakeName }}_id: HashHelper.decrypt(ctx.request.param("{{ camelName }}Id")),
+      };
+
+      let errorMessage = {
+        "{{ snakeName }}_id.number": "ID {{ labelName }} harus berupa angka !",
+        "{{ snakeName }}_id.required": "ID {{ labelName }} tidak boleh kosong !",
+        "{{ snakeName }}_id.min": "ID {{ labelName }} harus minimal 1 !",
+        "{{ snakeName }}_id.withoutDecimals": "ID {{ labelName }} harus berupa angka bulat !",
+        "{{ snakeName }}_id.exists": "ID {{ labelName }} tidak ditemukan !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        statusNotify: "success",
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getFirstErrorMessage(ctx, error);
+
+      return {
+        status: false,
+        statusNotify: "danger",
+        message: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Delete validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async delete(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        {{ snakeName }}_id: vine.number().min(1).withoutDecimals().exists({
+          table: "{{ tableName }}",
+          column: "id",
+          filter: (query) => {
+            query.whereNull("deleted_at");
+          },
+        }),
+      });
+
+      let data = {
+        {{ snakeName }}_id: HashHelper.decrypt(ctx.request.param("{{ camelName }}Id")),
+      };
+
+      let errorMessage = {
+        "{{ snakeName }}_id.number": "ID {{ labelName }} harus berupa angka !",
+        "{{ snakeName }}_id.required": "ID {{ labelName }} tidak boleh kosong !",
+        "{{ snakeName }}_id.min": "ID {{ labelName }} harus minimal 1 !",
+        "{{ snakeName }}_id.withoutDecimals": "ID {{ labelName }} harus berupa angka bulat !",
+        "{{ snakeName }}_id.exists": "ID {{ labelName }} tidak ditemukan !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        statusNotify: "success",
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getFirstErrorMessage(ctx, error);
+
+      return {
+        status: false,
+        statusNotify: "danger",
+        message: errorMessage,
+      };
+    }
+  }
+}

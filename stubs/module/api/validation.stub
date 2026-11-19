@@ -1,0 +1,295 @@
+import { HttpContext } from "@adonisjs/core/http";
+import vine, { SimpleMessagesProvider } from "@vinejs/vine";
+
+import CheckHelper from "#helpers/check_helper";
+import ErrorHelper from "#helpers/error_helper";
+import MessageHelper from "#helpers/message_helper";
+
+export default class {{ name }}Validation {
+  /**
+   ** Index validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async index(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        is_paginate: vine.boolean(),
+
+        page: vine
+          .number()
+          .min(1)
+          .withoutDecimals()
+          .optional()
+          .requiredWhen((field) => CheckHelper.isTrue(field.parent.is_paginate)),
+
+        per_page: vine
+          .number()
+          .min(1)
+          .withoutDecimals()
+          .optional()
+          .requiredWhen((field) => CheckHelper.isTrue(field.parent.is_paginate)),
+
+        order_by: vine.string().minLength(1).in(["id", "created_at"]),
+
+        order_type: vine.string().minLength(1).in(["asc", "desc"]),
+
+        filter: vine
+          .object({
+            //
+          })
+          .optional(),
+      });
+
+      let data = {
+        is_paginate: ctx.request.input("is_paginate"),
+        page: ctx.request.input("page"),
+        per_page: ctx.request.input("per_page"),
+        order_by: ctx.request.input("order_by"),
+        order_type: ctx.request.input("order_type"),
+        filter: ctx.request.input("filter"),
+      };
+
+      let errorMessage = {
+        "is_paginate.boolean": "Status paginasi harus berupa true atau false !",
+        "is_paginate.required": "Status paginasi tidak boleh kosong !",
+
+        "page.number": "Halaman harus berupa angka !",
+        "page.required": "Halaman tidak boleh kosong !",
+        "page.min": "Halaman harus minimal 1 !",
+        "page.withoutDecimals": "Halaman harus berupa angka bulat !",
+
+        "per_page.number": "Per halaman harus berupa angka !",
+        "per_page.required": "Per halaman tidak boleh kosong !",
+        "per_page.min": "Per halaman harus minimal 1 !",
+        "per_page.withoutDecimals": "Per halaman harus berupa angka bulat !",
+
+        "order_by.string": "Urutan berdasarkan harus berupa string !",
+        "order_by.required": "Urutan berdasarkan tidak boleh kosong !",
+        "order_by.minLength": "Urutan berdasarkan harus minimal 1 karakter !",
+        "order_by.in": "Urutan berdasarkan harus berupa id atau created_at !",
+
+        "order_type.string": "Tipe urutan harus berupa string !",
+        "order_type.required": "Tipe urutan tidak boleh kosong !",
+        "order_type.minLength": "Tipe urutan harus minimal 1 karakter !",
+        "order_type.in": "Tipe urutan harus berupa asc atau desc !",
+
+        "filter.object": "Filter harus berupa object !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getAllErrorMessages(ctx, error);
+
+      return {
+        status: false,
+        message: MessageHelper.validateFail(),
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Detail validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async detail(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        {{ snakeName }}_id: vine.number().min(1).withoutDecimals().exists({
+          table: "{{ tableName }}",
+          column: "id",
+          filter: (query) => {
+            query.whereNull("deleted_at");
+          },
+        }),
+      });
+
+      let data = {
+        {{ snakeName }}_id: ctx.request.input("{{ snakeName }}_id"),
+      };
+
+      let errorMessage = {
+        "{{ snakeName }}_id.number": "ID {{ labelName }} harus berupa angka !",
+        "{{ snakeName }}_id.required": "ID {{ labelName }} tidak boleh kosong !",
+        "{{ snakeName }}_id.min": "ID {{ labelName }} harus minimal 1 !",
+        "{{ snakeName }}_id.withoutDecimals": "ID {{ labelName }} harus berupa angka bulat !",
+        "{{ snakeName }}_id.database.exists": "ID {{ labelName }} tidak ditemukan !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getAllErrorMessages(ctx, error);
+
+      return {
+        status: false,
+        message: MessageHelper.validateFail(),
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Create validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async create(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        //
+      });
+
+      let data = {
+        //
+      };
+
+      let errorMessage = {
+        //
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getAllErrorMessages(ctx, error);
+
+      return {
+        status: false,
+        message: MessageHelper.validateFail(),
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Update validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async update(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        {{ snakeName }}_id: vine.number().min(1).withoutDecimals().exists({
+          table: "{{ tableName }}",
+          column: "id",
+          filter: (query) => {
+            query.whereNull("deleted_at");
+          },
+        }),
+      });
+
+      let data = {
+        {{ snakeName }}_id: ctx.request.input("{{ snakeName }}_id"),
+      };
+
+      let errorMessage = {
+        "{{ snakeName }}_id.number": "ID {{ labelName }} harus berupa angka !",
+        "{{ snakeName }}_id.required": "ID {{ labelName }} tidak boleh kosong !",
+        "{{ snakeName }}_id.min": "ID {{ labelName }} harus minimal 1 !",
+        "{{ snakeName }}_id.withoutDecimals": "ID {{ labelName }} harus berupa angka bulat !",
+        "{{ snakeName }}_id.database.exists": "ID {{ labelName }} tidak ditemukan !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getAllErrorMessages(ctx, error);
+
+      return {
+        status: false,
+        message: MessageHelper.validateFail(),
+        error: errorMessage,
+      };
+    }
+  }
+
+  /**
+   ** Delete validation
+   *
+   * @param ctx
+   * @return object
+   */
+  public async delete(ctx: HttpContext) {
+    try {
+      let schema = vine.object({
+        {{ snakeName }}_id: vine.number().min(1).withoutDecimals().exists({
+          table: "{{ tableName }}",
+          column: "id",
+          filter: (query) => {
+            query.whereNull("deleted_at");
+          },
+        }),
+      });
+
+      let data = {
+        {{ snakeName }}_id: ctx.request.input("{{ snakeName }}_id"),
+      };
+
+      let errorMessage = {
+        "{{ snakeName }}_id.number": "ID {{ labelName }} harus berupa angka !",
+        "{{ snakeName }}_id.required": "ID {{ labelName }} tidak boleh kosong !",
+        "{{ snakeName }}_id.min": "ID {{ labelName }} harus minimal 1 !",
+        "{{ snakeName }}_id.withoutDecimals": "ID {{ labelName }} harus berupa angka bulat !",
+        "{{ snakeName }}_id.database.exists": "ID {{ labelName }} tidak ditemukan !",
+      };
+
+      await vine.validate({
+        schema: schema,
+        data: data,
+        messagesProvider: new SimpleMessagesProvider(errorMessage),
+      });
+
+      return {
+        status: true,
+        message: MessageHelper.validateSuccess(),
+      };
+    } catch (error) {
+      let errorMessage = ErrorHelper.getAllErrorMessages(ctx, error);
+
+      return {
+        status: false,
+        message: MessageHelper.validateFail(),
+        error: errorMessage,
+      };
+    }
+  }
+}

@@ -1,0 +1,156 @@
+import { HttpContext } from "@adonisjs/core/http";
+
+import BaseController from "#controllers/base_controller";
+
+import {{ name }}Service from "#services/{{ folderImport }}{{ snakeName }}_service";
+
+import {{ name }}Validation from "#validations/{{ folderImport }}{{ snakeName }}_validation";
+
+export default class {{ name }}Controller extends BaseController {
+  /**
+   ** Service instance
+   *
+   * @var {{ name }}Service
+   */
+  protected {{ camelName }}Service: {{ name }}Service;
+
+  /**
+   ** Validation instance
+   *
+   * @var {{ name }}Validation
+   */
+  protected {{ camelName }}Validation: {{ name }}Validation;
+
+  /**
+   ** Constructor
+   *
+   * @param {{ name }}Service {{ camelName }}Service
+   * @param {{ name }}Validation {{ camelName }}Validation
+   */
+  constructor() {
+    super();
+    this.{{ camelName }}Service = new {{ name }}Service();
+    this.{{ camelName }}Validation = new {{ name }}Validation();
+  }
+
+  /**
+   ** Index
+   *
+   * @param ctx
+   * @return view
+   */
+  public async index(ctx: HttpContext) {
+    let result = await this.{{ camelName }}Service.index(ctx);
+
+    return ctx.view.render("dashboard/pages/{{ snakeName }}/index", {
+      filter: result.filter,
+    });
+  }
+
+  /**
+   ** Create
+   *
+   * @param ctx
+   * @return view
+   */
+  public async create(ctx: HttpContext) {
+    return ctx.view.render("dashboard/pages/{{ snakeName }}/create");
+  }
+
+  /**
+   ** Store
+   *
+   * @param ctx
+   * @return response
+   */
+  public async store(ctx: HttpContext) {
+    let validation = await this.{{ camelName }}Validation.store(ctx);
+
+    if (!validation.status) {
+      ctx.session.flash(validation.statusNotify, validation.message);
+      return ctx.response.redirect().back();
+    }
+
+    let result = await this.{{ camelName }}Service.store(ctx);
+
+    ctx.session.flash(result.statusNotify, result.message);
+    return ctx.response.redirect().back();
+  }
+
+  /**
+   ** Edit
+   *
+   * @param ctx
+   * @return view
+   */
+  public async edit(ctx: HttpContext) {
+    let validation = await this.{{ camelName }}Validation.edit(ctx);
+
+    if (!validation.status) {
+      ctx.session.flash(validation.statusNotify, validation.message);
+      return ctx.response.redirect().back();
+    }
+
+    let result = await this.{{ camelName }}Service.edit(ctx);
+
+    return ctx.view.render("dashboard/pages/{{ snakeName }}/edit", {
+      {{ camelName }}: result.{{ camelName }},
+    });
+  }
+
+  /**
+   ** Update
+   *
+   * @param ctx
+   * @return response
+   */
+  public async update(ctx: HttpContext) {
+    let validation = await this.{{ camelName }}Validation.update(ctx);
+
+    if (!validation.status) {
+      ctx.session.flash(validation.statusNotify, validation.message);
+      return ctx.response.redirect().back();
+    }
+
+    let result = await this.{{ camelName }}Service.update(ctx);
+
+    ctx.session.flash(result.statusNotify, result.message);
+    return ctx.response.redirect().back();
+  }
+
+  /**
+   ** Delete
+   *
+   * @param ctx
+   * @return response
+   */
+  public async delete(ctx: HttpContext) {
+    let validation = await this.{{ camelName }}Validation.delete(ctx);
+
+    if (!validation.status) {
+      ctx.session.flash(validation.statusNotify, validation.message);
+      return ctx.response.redirect().back();
+    }
+
+    let result = await this.{{ camelName }}Service.delete(ctx);
+
+    ctx.session.flash(result.statusNotify, result.message);
+    return ctx.response.redirect().back();
+  }
+
+  // * =========================================================================================================================
+  // * Async
+  // * =========================================================================================================================
+
+  /**
+   ** Get datatable
+   *
+   * @param ctx
+   * @return Response
+   */
+  public async getDatatable(ctx: HttpContext) {
+    let result = await this.{{ camelName }}Service.getDatatable(ctx);
+
+    return result.datatable;
+  }
+}
