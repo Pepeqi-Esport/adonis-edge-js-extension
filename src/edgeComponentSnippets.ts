@@ -1,7 +1,10 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { camel } from "./stringHelpers";
+import {
+  tagNameFromComponentPath,
+  walkEdgeFiles,
+} from "./edgeComponentDiscovery";
 
 const DEFAULT_VIEW_DISKS: Record<string, string> = {
   default: "resources/views",
@@ -71,29 +74,6 @@ function findProjectRoot(filePath: string): string | null {
 }
 
 /**
- * Walk `dir` recursively and collect `.edge` files.
- */
-function walkEdgeFiles(dir: string, out: string[]): void {
-  if (!fs.existsSync(dir)) {
-    return;
-  }
-  let entries: fs.Dirent[];
-  try {
-    entries = fs.readdirSync(dir, { withFileTypes: true });
-  } catch {
-    return;
-  }
-  for (const entry of entries) {
-    const full = path.join(dir, entry.name);
-    if (entry.isDirectory()) {
-      walkEdgeFiles(full, out);
-    } else if (entry.isFile() && entry.name.toLowerCase().endsWith(".edge")) {
-      out.push(full);
-    }
-  }
-}
-
-/**
  * Infer prop names from an Edge component template (best-effort).
  */
 export function inferComponentProps(source: string): string[] {
@@ -151,37 +131,6 @@ export function inferComponentProps(source: string): string[] {
   }
 
   return [...props].sort((a, b) => a.localeCompare(b));
-}
-
-/**
- * Convert a file path under `.../components/` to an Edge short-tag name.
- * Matches Edge filename → tag rules:
- * `components/input.edge` → `input`
- * `components/input_group.edge` → `inputGroup`
- * `components/form/field.edge` → `form.field`
- * `components/checkout_form/input.edge` → `checkoutForm.input`
- * `components/modal/index.edge` → `modal`
- */
-function tagNameFromComponentPath(
-  componentFile: string,
-  componentsRoot: string,
-): string | null {
-  const rel = path.relative(componentsRoot, componentFile);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) {
-    return null;
-  }
-  const withoutExt = rel.replace(/\.edge$/i, "");
-  const parts = withoutExt.split(/[/\\]/).filter(Boolean);
-  if (parts.length === 0) {
-    return null;
-  }
-  if (parts[parts.length - 1].toLowerCase() === "index") {
-    parts.pop();
-    if (parts.length === 0) {
-      return null;
-    }
-  }
-  return parts.map((part) => camel(part)).join(".");
 }
 
 function discoverComponents(projectRoot: string): EdgeComponentInfo[] {

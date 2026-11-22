@@ -1,7 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
-import { snake } from "./stringHelpers";
+import { buildComponentTagMap } from "./edgeComponentDiscovery";
 
 type PathKind = "public" | "project" | "view";
 
@@ -99,6 +99,12 @@ export class EdgePathNavigator {
 
   private static readonly ABSOLUTE_URL_PATTERN = /^https?:\/\//i;
 
+  /** tagName → file cache (Edge-style discovery), short TTL for edit/watch cycles */
+  private componentTagCache = new Map<
+    string,
+    { tags: Map<string, string>; expires: number }
+  >();
+
   findHelperPaths(text: string): PathMatch[] {
     return [
       ...this.findPublicHelperPaths(text),
@@ -150,13 +156,11 @@ export class EdgePathNavigator {
   }
 
   /**
-   * Edge tag → file (snake_case + optional index), matching Edge docs:
-   * `input` → `{disk}/components/input.edge`
-   * `inputGroup` → `{disk}/components/input_group.edge`
-   * `form.field` → `{disk}/components/form/field.edge`
-   * `checkoutForm.input` → `{disk}/components/checkout_form/input.edge`
-   * `modal` → `{disk}/components/modal/index.edge` (fallback)
-   * `uikit.input` → disk `uikit` + `components/input.edge` when that disk exists
+   * Resolve a short-tag name the same way Edge registers components:
+   * scan components/*.edge recursively, convert file path to camelCase tag, look up.
+   * `input_password.edge` → `@!inputPassword`
+   * `checkout_form/input.edge` → `@!checkoutForm.input`
+   * `uikit` disk `input.edge` → `@!uikit.input`
    */
   resolveComponentTagFile(
     projectRoot: string,
@@ -167,74 +171,35 @@ export class EdgePathNavigator {
       return null;
     }
 
-    const disks = this.getViewDisks();
-    const parts = trimmed.split(".").filter(Boolean);
-    if (parts.length === 0) {
-      return null;
+    const tags = this.getComponentTagMap(projectRoot);
+    const exact = tags.get(trimmed);
+    if (exact && fs.existsSync(exact)) {
+      return exact;
     }
 
-    const candidates: string[] = [];
-
-    // Named disk: @!uikit.inputGroup → disk "uikit" / components/input_group.edge
-    if (parts.length >= 2) {
-      const diskName = parts[0];
-      const diskRoot = disks[diskName];
-      if (diskRoot && diskName !== "default") {
-        this.pushComponentPathCandidates(
-          candidates,
-          projectRoot,
-          diskRoot,
-          parts.slice(1),
-        );
-      }
-    }
-
-    // Default / all disks: dots → path segments under components/
-    for (const diskRoot of Object.values(disks)) {
-      this.pushComponentPathCandidates(
-        candidates,
-        projectRoot,
-        diskRoot,
-        parts,
-      );
-    }
-
-    for (const candidate of candidates) {
-      if (fs.existsSync(candidate)) {
-        return candidate;
+    // Case-insensitive fallback (users sometimes type @!InputPassword)
+    const lower = trimmed.toLowerCase();
+    for (const [tag, filePath] of tags) {
+      if (tag.toLowerCase() === lower && fs.existsSync(filePath)) {
+        return filePath;
       }
     }
 
     return null;
   }
 
-  /**
-   * Build candidate paths for a component tag's path segments.
-   * Tries Edge snake_case (`inputGroup` → `input_group.edge`) first, then
-   * the literal segment names, plus `/index.edge` for folder components.
-   */
-  private pushComponentPathCandidates(
-    candidates: string[],
-    projectRoot: string,
-    diskRoot: string,
-    parts: string[],
-  ): void {
-    const variants: string[][] = [parts.map((part) => snake(part))];
-    const literalSame = parts.every((part, i) => part === variants[0][i]);
-    if (!literalSame) {
-      variants.push(parts);
+  private getComponentTagMap(projectRoot: string): Map<string, string> {
+    const cached = this.componentTagCache.get(projectRoot);
+    if (cached && cached.expires > Date.now()) {
+      return cached.tags;
     }
 
-    for (const fileParts of variants) {
-      const base = path.join(
-        projectRoot,
-        diskRoot,
-        "components",
-        ...fileParts,
-      );
-      candidates.push(`${base}.edge`);
-      candidates.push(path.join(base, "index.edge"));
-    }
+    const tags = buildComponentTagMap(projectRoot, this.getViewDisks());
+    this.componentTagCache.set(projectRoot, {
+      tags,
+      expires: Date.now() + 1500,
+    });
+    return tags;
   }
 
   findAbsoluteHtmlUrls(text: string): AbsoluteUrlMatch[] {
