@@ -6,7 +6,7 @@ VS Code helpers for AdonisJS routes and Edge templates.
 
 1. [Go to Controller from Route](#1-go-to-controller-from-route)
 2. [Formatter for Edge JS](#2-formatter-for-edge-js)
-3. [Go to File from `publicAsset` / `@vite` / `@include` / `@component` / `@!input`](#3-go-to-file-from-publicasset--vite--include--component--input)
+3. [Go to File from Edge templates](#3-go-to-file-from-edge-templates)
 4. [Edge Spacer](#4-edge-spacer)
 
 ---
@@ -58,7 +58,7 @@ const UserController = () => import("#controllers/user_controller");
 // Click '#controllers/user_controller'
 ```
 
-Nested barrel keys are supported, e.g. `[controllers.auth.Login, 'handle']` .
+Nested barrel keys are supported, e.g. `[controllers.auth.Login, 'handle']`.
 
 ---
 
@@ -99,10 +99,9 @@ Example with `auto` + `printWidth` 140:
 #### Also
 
 - Auto-align `@end` / `@endsection` while typing
-- Command / context menu: **Edge: Convert HTML Comments to Edge Comments**
-  {{--  --}}l convert HTML comments → `{{-- --}}` on save
+- Command / context menu: **Edge: Convert HTML Comments to Edge Comments** — convert HTML comments → `{{-- --}}` (optional on save)
 - Default indent / tab size: **4**
-- Dynamic snippets for custom components under `resources/views/components` (via `edge.disks`): type `@!` / component name to insert `@!tag({ props })` with inferred props
+- Dynamic snippets for custom components under `resources/views/components` (via `edge.disks`): type `@!` / component name to insert `@!tag({ props })` with inferred props (snake_case files → camelCase tags, e.g. `input_password.edge` → `@!inputPassword`)
 
 ```json
 // .vscode/settings.json
@@ -124,19 +123,20 @@ Example with `auto` + `printWidth` 140:
 
 ---
 
-### 3. Go to File from `publicAsset` / `@vite` / `@include` / `@component` / `@!input`
+### 3. Go to File from Edge templates
 
 In `.edge` files, `editor.links` is off by default so relative HTML `href` / `src` / `action` values (e.g. `/logout`, `{{ auth.user.profileFileUrl }}`) are **not** underlined.
 
-Only these get link-style underlines:
+Only these get link-style underlines + Ctrl/Cmd+Click (F12):
 
-- `publicAsset('...')` / `@vite('...')` / `@include('...')` / `@component('...')` — Ctrl/Cmd+Click opens the file
-- Custom short tags like `@!input` / `@!form.field` (from `resources/views/components/**/*.edge`) — Ctrl/Cmd+Click opens the component file
+- `publicAsset('...')` / `@vite('...')` / `@include('...')` / `@component('...')` — opens the target file
+- Custom short tags like `@!input` / `@!inputPassword` / `@!form.field` — opens the component `.edge` file
+- Registered `edge.global` helpers like `FormatterHelper.formatNumber(...)` — opens the helper module / method
 - Absolute `http://` / `https://` in HTML URL attrs — hover → **Open URL**
 
 #### `publicAsset`
 
-Register the Edge global helper in your app (e.g. a provider / Edge setup):
+Register the Edge global helper in your app (e.g. `start/view.ts` / a provider):
 
 ```typescript
 edge.global("publicAsset", (path: string) => {
@@ -151,7 +151,7 @@ Then use it in templates:
 <img src="{{ publicAsset('assets/dashboard/custom/image/logo/logo.png') }}" width="80">
 ```
 
-- Underlined; Ctrl/Cmd+Click opens `public/assets/dashboard/custom/image/logo/logo.png`
+- Path argument is underlined; Ctrl/Cmd+Click opens `public/assets/dashboard/custom/image/logo/logo.png`
 - Leading `/` is optional
 
 #### `url`
@@ -196,14 +196,52 @@ Then use it in templates:
 
 #### Custom component short tags
 
+Matches Edge’s filename → tag rules (scan `components/**/*.edge`):
+
+| Template path | Tag name |
+| --- | --- |
+| `input.edge` | `@!input` |
+| `input_password.edge` | `@!inputPassword` |
+| `form/field.edge` | `@!form.field` |
+| `checkout_form/input.edge` | `@!checkoutForm.input` |
+| `modal/index.edge` | `@!modal` |
+
 ```edge
 @!input({ name: 'email' })
+@!inputPassword({ label: 'Password', name: 'password' })
 @!form.field({ label: 'Title' })
 ```
 
-- Tag name is underlined when `resources/views/components/<tag>.edge` exists (dots → folders, e.g. `form.field` → `components/form/field.edge`)
+- Tag name is underlined when the component file exists
 - Ctrl/Cmd+Click opens that component file
 - Named disks: `@!uikit.input` → disk `uikit` + `components/input.edge` when configured in `edge.disks`
+
+#### `edge.global` helpers
+
+Registrations are discovered from `start/`, `providers/`, and `app/providers/` (e.g. `start/view.ts`):
+
+```typescript
+import FormatterHelper from "#helpers/formatter_helper";
+
+edge.global("FormatterHelper", FormatterHelper);
+```
+
+Then in templates:
+
+```edge
+@!inputCurrency({
+  label: 'Harga',
+  name: 'price',
+  value: FormatterHelper.formatNumber(product.price),
+  placeholder: 'Masukkan Harga',
+  prefixText: 'Rp'
+})
+```
+
+- **Ctrl/Cmd+Click `FormatterHelper`** → opens the helper module (`formatter_helper.ts`)
+- **Ctrl/Cmd+Click `formatNumber`** → opens the same file and selects that method/function
+- Import aliases from `package.json#imports` are resolved (e.g. `#helpers/*`)
+- Both identifiers are underlined when the target file exists
 
 #### Absolute HTML URLs
 
@@ -233,17 +271,18 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 - Routes: barrel / lazy import / magic string → controller via `package.json#imports`
 - Edge formatter: document / range / on-type formatting for `.edge` files
 - Edge: component call props formatting for `@!component` / `@!input`-style short tags
-- Edge: dynamic completion snippets for `components/**/*.edge` (props inferred from template)
+- Edge: dynamic completion snippets for `components/**/*.edge` (snake_case → camelCase tags; props inferred from template)
 - Edge: `editor.links` off — relative HTML attrs / Edge expressions in `src` are not follow-linked
-- Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / `@!input` short tags / absolute `http(s)`
-- Edge: those helpers + custom component tags → Go to Definition; absolute `http(s)` → hover Open URL
+- Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / custom short tags / `edge.global` helpers / absolute `http(s)`
+- Edge: those targets → Go to Definition; absolute `http(s)` → hover Open URL
+- Edge: `edge.global` discovery scans `start/` / `providers/` / `app/providers/`, resolves imports, and jumps to methods via TypeScript AST
 - Edge spacer: watches typing of `{{ }}` / `{{{ }}}` and expands with spaces
 
 ## Requirements
 
 - VS Code 1.75.0 or later
-- AdonisJS project with TypeScript (for route goto)
-- `package.json#imports` mapping for `#controllers/*`
+- AdonisJS project with TypeScript (for route goto and helper method jump)
+- `package.json#imports` mapping for `#controllers/*` (and helper aliases like `#helpers/*` when used)
 - For barrel style: generated `.adonisjs/server/controllers.ts` (or `#generated/*` import map)
 
 ## Installation
@@ -257,6 +296,8 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 
 - Only `#controllers/*` (and `#generated/controllers` for barrels) — not `@controllers`
 - `publicAsset` → `public/`; `@vite` → project root; `@include` / `@component` → `edge.disks` (default `resources/views`)
+- Custom short tags only resolve files under each disk’s `components/` directory (Edge convention)
+- `edge.global` helpers are discovered from `start/`, `providers/`, and `app/providers/` only
 - Relative HTML `href` / `src` / `action` are not navigable; only absolute `http(s)` URLs get hover Open URL
 - This package does not include an Edge TextMate grammar — install a separate Edge highlighter if you want colors
 - Simple `@if` / `@else` plain-text branches may be rewritten to ternaries on format
