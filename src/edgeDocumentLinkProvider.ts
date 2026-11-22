@@ -2,6 +2,12 @@ import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
 import { buildComponentTagMap } from "./edgeComponentDiscovery";
+import {
+  discoverEdgeGlobals,
+  findEdgeGlobalUsages,
+  findMethodRangeInFile,
+  type EdgeGlobalBinding,
+} from "./edgeGlobalHelpers";
 
 type PathKind = "public" | "project" | "view";
 
@@ -79,7 +85,8 @@ const CUSTOM_COMPONENT_TAG_PATTERN = /@(!?)([a-zA-Z][\w.]*)\b/g;
  * editor.links is disabled for [edge] so built-in relative href/src
  * underlines (including src="{{ ... }}") are suppressed. Instead:
  * - Decorations: always-visible underline for publicAsset / @vite / @include /
- *   @component / custom short tags (@!input) / absolute http(s)
+ *   @component / custom short tags (@!input) / edge.global helpers /
+ *   absolute http(s)
  * - DefinitionProvider: Ctrl/Cmd+Click + F12 for local files
  * - HoverProvider: absolute http(s) to Open URL command
  */
@@ -103,6 +110,12 @@ export class EdgePathNavigator {
   private componentTagCache = new Map<
     string,
     { tags: Map<string, string>; expires: number }
+  >();
+
+  /** edge.global name → helper module cache */
+  private edgeGlobalCache = new Map<
+    string,
+    { globals: Map<string, EdgeGlobalBinding>; expires: number }
   >();
 
   findHelperPaths(text: string): PathMatch[] {
@@ -200,6 +213,20 @@ export class EdgePathNavigator {
       expires: Date.now() + 1500,
     });
     return tags;
+  }
+
+  getEdgeGlobals(projectRoot: string): Map<string, EdgeGlobalBinding> {
+    const cached = this.edgeGlobalCache.get(projectRoot);
+    if (cached && cached.expires > Date.now()) {
+      return cached.globals;
+    }
+
+    const globals = discoverEdgeGlobals(projectRoot);
+    this.edgeGlobalCache.set(projectRoot, {
+      globals,
+      expires: Date.now() + 2000,
+    });
+    return globals;
   }
 
   findAbsoluteHtmlUrls(text: string): AbsoluteUrlMatch[] {
@@ -466,14 +493,21 @@ function isEdgeFile(document: vscode.TextDocument): boolean {
   );
 }
 
+interface LocalFileLink {
+  range: vscode.Range;
+  target: vscode.Uri;
+  /** Prefer selecting this range in the target (e.g. method name) */
+  targetSelectionRange?: vscode.Range;
+}
+
 /**
- * Collect local file targets for helper paths + custom component tags.
- * Only includes targets whose file exists on disk.
+ * Collect local file targets for helper paths + custom component tags +
+ * edge.global helpers. Only includes targets whose file exists on disk.
  */
 function collectLocalFileLinks(
   navigator: EdgePathNavigator,
   document: vscode.TextDocument,
-): { range: vscode.Range; target: vscode.Uri }[] {
+): LocalFileLink[] {
   if (!isEdgeFile(document)) {
     return [];
   }
@@ -484,7 +518,7 @@ function collectLocalFileLinks(
   }
 
   const text = document.getText();
-  const links: { range: vscode.Range; target: vscode.Uri }[] = [];
+  const links: LocalFileLink[] = [];
 
   for (const match of navigator.findHelperPaths(text)) {
     const targetPath = navigator.resolveFile(
@@ -514,11 +548,39 @@ function collectLocalFileLinks(
     });
   }
 
+  const globals = navigator.getEdgeGlobals(projectRoot);
+  for (const match of findEdgeGlobalUsages(text, globals)) {
+    let targetSelectionRange: vscode.Range | undefined;
+    if (match.methodName) {
+      const methodRange = findMethodRangeInFile(
+        match.filePath,
+        match.methodName,
+      );
+      if (methodRange) {
+        targetSelectionRange = new vscode.Range(
+          methodRange.startLine,
+          methodRange.startCharacter,
+          methodRange.endLine,
+          methodRange.endCharacter,
+        );
+      }
+    }
+    links.push({
+      range: new vscode.Range(
+        document.positionAt(match.offset),
+        document.positionAt(match.offset + match.length),
+      ),
+      target: vscode.Uri.file(match.filePath),
+      targetSelectionRange,
+    });
+  }
+
   return links;
 }
 
 /**
- * Ctrl/Cmd+Click + F12 for publicAsset / @vite / @include / @component / @!input.
+ * Ctrl/Cmd+Click + F12 for publicAsset / @vite / @include / @component /
+ * @!input / edge.global helpers (FormatterHelper.formatNumber).
  *
  * Returns LocationLink with `originSelectionRange` so Ctrl/Cmd+hover shows the
  * pointer + underline on the full path (including inside `{{ publicAsset('…') }}`),
@@ -536,11 +598,13 @@ export class EdgePathDefinitionProvider implements vscode.DefinitionProvider {
       if (!rangeContainsPosition(link.range, position)) {
         continue;
       }
+      const selection =
+        link.targetSelectionRange ?? new vscode.Range(0, 0, 0, 0);
       return [
         {
           targetUri: link.target,
-          targetRange: new vscode.Range(0, 0, 0, 0),
-          targetSelectionRange: new vscode.Range(0, 0, 0, 0),
+          targetRange: selection,
+          targetSelectionRange: selection,
           originSelectionRange: link.range,
         },
       ];
@@ -606,7 +670,7 @@ export class EdgeAbsoluteUrlHoverProvider implements vscode.HoverProvider {
 
 /**
  * Link-style underlines for publicAsset / @vite / @include / @component /
- * custom short tags (@!input) / absolute http(s) only.
+ * custom short tags (@!input) / edge.global helpers / absolute http(s).
  * Avoids re-enabling editor.links (relative HTML links).
  */
 class EdgeLinkUnderlineDecorator {
