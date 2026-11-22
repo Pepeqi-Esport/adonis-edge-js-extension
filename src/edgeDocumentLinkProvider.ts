@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { snake } from "./stringHelpers";
 
 type PathKind = "public" | "project" | "view";
 
@@ -149,8 +150,12 @@ export class EdgePathNavigator {
   }
 
   /**
+   * Edge tag → file (snake_case + optional index), matching Edge docs:
    * `input` → `{disk}/components/input.edge`
+   * `inputGroup` → `{disk}/components/input_group.edge`
    * `form.field` → `{disk}/components/form/field.edge`
+   * `checkoutForm.input` → `{disk}/components/checkout_form/input.edge`
+   * `modal` → `{disk}/components/modal/index.edge` (fallback)
    * `uikit.input` → disk `uikit` + `components/input.edge` when that disk exists
    */
   resolveComponentTagFile(
@@ -170,26 +175,27 @@ export class EdgePathNavigator {
 
     const candidates: string[] = [];
 
-    // Named disk: @!uikit.input → disk "uikit" / components/input.edge
+    // Named disk: @!uikit.inputGroup → disk "uikit" / components/input_group.edge
     if (parts.length >= 2) {
       const diskName = parts[0];
       const diskRoot = disks[diskName];
       if (diskRoot && diskName !== "default") {
-        candidates.push(
-          path.join(
-            projectRoot,
-            diskRoot,
-            "components",
-            ...parts.slice(1),
-          ) + ".edge",
+        this.pushComponentPathCandidates(
+          candidates,
+          projectRoot,
+          diskRoot,
+          parts.slice(1),
         );
       }
     }
 
     // Default / all disks: dots → path segments under components/
     for (const diskRoot of Object.values(disks)) {
-      candidates.push(
-        path.join(projectRoot, diskRoot, "components", ...parts) + ".edge",
+      this.pushComponentPathCandidates(
+        candidates,
+        projectRoot,
+        diskRoot,
+        parts,
       );
     }
 
@@ -200,6 +206,35 @@ export class EdgePathNavigator {
     }
 
     return null;
+  }
+
+  /**
+   * Build candidate paths for a component tag's path segments.
+   * Tries Edge snake_case (`inputGroup` → `input_group.edge`) first, then
+   * the literal segment names, plus `/index.edge` for folder components.
+   */
+  private pushComponentPathCandidates(
+    candidates: string[],
+    projectRoot: string,
+    diskRoot: string,
+    parts: string[],
+  ): void {
+    const variants: string[][] = [parts.map((part) => snake(part))];
+    const literalSame = parts.every((part, i) => part === variants[0][i]);
+    if (!literalSame) {
+      variants.push(parts);
+    }
+
+    for (const fileParts of variants) {
+      const base = path.join(
+        projectRoot,
+        diskRoot,
+        "components",
+        ...fileParts,
+      );
+      candidates.push(`${base}.edge`);
+      candidates.push(path.join(base, "index.edge"));
+    }
   }
 
   findAbsoluteHtmlUrls(text: string): AbsoluteUrlMatch[] {

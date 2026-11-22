@@ -1,6 +1,7 @@
 import * as vscode from "vscode";
 import * as path from "path";
 import * as fs from "fs";
+import { camel } from "./stringHelpers";
 
 const DEFAULT_VIEW_DISKS: Record<string, string> = {
   default: "resources/views",
@@ -154,8 +155,12 @@ export function inferComponentProps(source: string): string[] {
 
 /**
  * Convert a file path under `.../components/` to an Edge short-tag name.
+ * Matches Edge filename → tag rules:
  * `components/input.edge` → `input`
+ * `components/input_group.edge` → `inputGroup`
  * `components/form/field.edge` → `form.field`
+ * `components/checkout_form/input.edge` → `checkoutForm.input`
+ * `components/modal/index.edge` → `modal`
  */
 function tagNameFromComponentPath(
   componentFile: string,
@@ -170,7 +175,13 @@ function tagNameFromComponentPath(
   if (parts.length === 0) {
     return null;
   }
-  return parts.join(".");
+  if (parts[parts.length - 1].toLowerCase() === "index") {
+    parts.pop();
+    if (parts.length === 0) {
+      return null;
+    }
+  }
+  return parts.map((part) => camel(part)).join(".");
 }
 
 function discoverComponents(projectRoot: string): EdgeComponentInfo[] {

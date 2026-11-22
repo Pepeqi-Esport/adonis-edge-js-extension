@@ -2,7 +2,7 @@
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
   "description": "Adonis Edge JS Extension for VS Code",
-  "version": "1.4.2",
+  "version": "1.4.3",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
