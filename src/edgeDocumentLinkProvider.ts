@@ -17,23 +17,74 @@ interface AbsoluteUrlMatch {
   urlOffset: number;
 }
 
+/** `@!input` / `@!form.field` short-tag → components/*.edge */
+interface ComponentTagMatch {
+  /** Tag name without @!, e.g. `input` or `form.field` */
+  tagName: string;
+  /** Absolute offset of the tag name (after `@` / `@!`) */
+  tagOffset: number;
+  tagLength: number;
+  /** Absolute filesystem path to the .edge component */
+  filePath: string;
+}
+
 const OPEN_EXTERNAL_URL_COMMAND = "edge.openExternalUrl";
 const DEFAULT_VIEW_DISKS: Record<string, string> = {
   default: "resources/views",
 };
 
 /**
+ * Built-in Edge tags that are not custom component short tags.
+ * Keep in sync with formatter exclusions.
+ */
+const BUILTIN_EDGE_TAGS = new Set([
+  "component",
+  "slot",
+  "if",
+  "each",
+  "unless",
+  "forelse",
+  "section",
+  "stack",
+  "push",
+  "prepend",
+  "else",
+  "elseif",
+  "end",
+  "endsection",
+  "endstack",
+  "endpush",
+  "endprepend",
+  "include",
+  "set",
+  "inject",
+  "break",
+  "continue",
+  "vite",
+  "debug",
+  "eval",
+  "debugger",
+  "let",
+  "assign",
+  "svg",
+]);
+
+/** `@!input` / `@input` / `@!form.field` / `@!uikit.input` */
+const CUSTOM_COMPONENT_TAG_PATTERN = /@(!?)([a-zA-Z][\w.]*)\b/g;
+
+/**
  * Path helpers and absolute http(s) URL navigation for Edge templates.
  *
- * editor.links is disabled for [edge] so HTML Language Service relative
- * href/src/action underlines are suppressed. Instead we:
- * - Draw link-style underlines for publicAsset / @vite / @include / @component / absolute http(s)
- * - DefinitionProvider for those helpers → local files
- * - HoverProvider for absolute http(s) HTML attribute URLs → open external
+ * editor.links is disabled for [edge] so built-in relative href/src
+ * underlines (including src="{{ ... }}") are suppressed. Instead:
+ * - Decorations: always-visible underline for publicAsset / @vite / @include /
+ *   @component / custom short tags (@!input) / absolute http(s)
+ * - DefinitionProvider: Ctrl/Cmd+Click + F12 for local files
+ * - HoverProvider: absolute http(s) to Open URL command
  */
 export class EdgePathNavigator {
-  private static readonly PUBLIC_HELPER_PATTERN =
-    /\bpublicAsset\s*\(\s*(['"])([^'"]*)\1\s*\)/g;
+  /** publicAsset( — args collected like @vite for nested/quoted paths */
+  private static readonly PUBLIC_HELPER_CALL_PATTERN = /\bpublicAsset\s*\(/g;
 
   private static readonly VITE_CALL_PATTERN = /@vite\s*\(/g;
 
@@ -55,6 +106,102 @@ export class EdgePathNavigator {
     ];
   }
 
+  /**
+   * Custom component short tags: `@!input`, `@!form.field`, `@!uikit.input`.
+   * Only returns tags that resolve to an existing file under components/.
+   */
+  findCustomComponentTags(
+    text: string,
+    projectRoot: string,
+  ): ComponentTagMatch[] {
+    const matches: ComponentTagMatch[] = [];
+    const pattern = new RegExp(
+      CUSTOM_COMPONENT_TAG_PATTERN.source,
+      CUSTOM_COMPONENT_TAG_PATTERN.flags,
+    );
+
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(text)) !== null) {
+      const bang = match[1];
+      const tagName = match[2];
+      const base = tagName.split(".")[0].toLowerCase();
+
+      if (BUILTIN_EDGE_TAGS.has(base)) {
+        continue;
+      }
+
+      const filePath = this.resolveComponentTagFile(projectRoot, tagName);
+      if (!filePath) {
+        continue;
+      }
+
+      // Underline the tag name only (`input` in `@!input`), not `@!`
+      const tagOffset = match.index + 1 + bang.length;
+      matches.push({
+        tagName,
+        tagOffset,
+        tagLength: tagName.length,
+        filePath,
+      });
+    }
+
+    return matches;
+  }
+
+  /**
+   * `input` → `{disk}/components/input.edge`
+   * `form.field` → `{disk}/components/form/field.edge`
+   * `uikit.input` → disk `uikit` + `components/input.edge` when that disk exists
+   */
+  resolveComponentTagFile(
+    projectRoot: string,
+    tagName: string,
+  ): string | null {
+    const trimmed = tagName.trim();
+    if (!trimmed) {
+      return null;
+    }
+
+    const disks = this.getViewDisks();
+    const parts = trimmed.split(".").filter(Boolean);
+    if (parts.length === 0) {
+      return null;
+    }
+
+    const candidates: string[] = [];
+
+    // Named disk: @!uikit.input → disk "uikit" / components/input.edge
+    if (parts.length >= 2) {
+      const diskName = parts[0];
+      const diskRoot = disks[diskName];
+      if (diskRoot && diskName !== "default") {
+        candidates.push(
+          path.join(
+            projectRoot,
+            diskRoot,
+            "components",
+            ...parts.slice(1),
+          ) + ".edge",
+        );
+      }
+    }
+
+    // Default / all disks: dots → path segments under components/
+    for (const diskRoot of Object.values(disks)) {
+      candidates.push(
+        path.join(projectRoot, diskRoot, "components", ...parts) + ".edge",
+      );
+    }
+
+    for (const candidate of candidates) {
+      if (fs.existsSync(candidate)) {
+        return candidate;
+      }
+    }
+
+    return null;
+  }
+
   findAbsoluteHtmlUrls(text: string): AbsoluteUrlMatch[] {
     const matches: AbsoluteUrlMatch[] = [];
     const pattern = new RegExp(
@@ -65,7 +212,11 @@ export class EdgePathNavigator {
     let match: RegExpExecArray | null;
     while ((match = pattern.exec(text)) !== null) {
       const url = match[2];
-      if (!EdgePathNavigator.ABSOLUTE_URL_PATTERN.test(url)) {
+      // Skip Edge expressions / non-http values (e.g. src="{{ auth.user.profileFileUrl }}")
+      if (
+        url.includes("{{") ||
+        !EdgePathNavigator.ABSOLUTE_URL_PATTERN.test(url)
+      ) {
         continue;
       }
       const quote = match[1];
@@ -153,27 +304,41 @@ export class EdgePathNavigator {
     return path.join(projectRoot, diskRoot, withExt.replace(/^\/+/, ""));
   }
 
+  /**
+   * Paths inside publicAsset(...) — same extraction style as @vite so
+   * Ctrl/Cmd+hover works consistently inside `{{ publicAsset('…') }}`.
+   */
   private findPublicHelperPaths(text: string): PathMatch[] {
     const matches: PathMatch[] = [];
-    const pattern = new RegExp(
-      EdgePathNavigator.PUBLIC_HELPER_PATTERN.source,
-      EdgePathNavigator.PUBLIC_HELPER_PATTERN.flags,
+    const callPattern = new RegExp(
+      EdgePathNavigator.PUBLIC_HELPER_CALL_PATTERN.source,
+      EdgePathNavigator.PUBLIC_HELPER_CALL_PATTERN.flags,
     );
 
-    let match: RegExpExecArray | null;
-    while ((match = pattern.exec(text)) !== null) {
-      const assetPath = match[2];
-      if (!assetPath.trim()) {
+    let call: RegExpExecArray | null;
+    while ((call = callPattern.exec(text)) !== null) {
+      const argsStart = call.index + call[0].length;
+      const argsEnd = this.findMatchingParen(text, argsStart - 1);
+      if (argsEnd === -1) {
         continue;
       }
-      const quote = match[1];
-      const pathLiteralOffset =
-        match.index + match[0].indexOf(quote + assetPath + quote) + 1;
-      matches.push({
-        path: assetPath,
-        pathOffset: pathLiteralOffset,
-        kind: "public",
-      });
+
+      const args = text.slice(argsStart, argsEnd);
+      const stringPattern = /(['"])([^'"]+)\1/g;
+      let strMatch: RegExpExecArray | null;
+      while ((strMatch = stringPattern.exec(args)) !== null) {
+        const assetPath = strMatch[2];
+        if (!assetPath.trim()) {
+          continue;
+        }
+        matches.push({
+          path: assetPath,
+          pathOffset: argsStart + strMatch.index + 1,
+          kind: "public",
+        });
+        // publicAsset takes a single path argument
+        break;
+      }
     }
 
     return matches;
@@ -301,7 +466,64 @@ function isEdgeFile(document: vscode.TextDocument): boolean {
   );
 }
 
-/** Ctrl/Cmd+Click publicAsset / @vite / @include / @component → local files. */
+/**
+ * Collect local file targets for helper paths + custom component tags.
+ * Only includes targets whose file exists on disk.
+ */
+function collectLocalFileLinks(
+  navigator: EdgePathNavigator,
+  document: vscode.TextDocument,
+): { range: vscode.Range; target: vscode.Uri }[] {
+  if (!isEdgeFile(document)) {
+    return [];
+  }
+
+  const projectRoot = navigator.findProjectRoot(document.uri.fsPath);
+  if (!projectRoot) {
+    return [];
+  }
+
+  const text = document.getText();
+  const links: { range: vscode.Range; target: vscode.Uri }[] = [];
+
+  for (const match of navigator.findHelperPaths(text)) {
+    const targetPath = navigator.resolveFile(
+      projectRoot,
+      match.path,
+      match.kind,
+    );
+    if (!targetPath || !fs.existsSync(targetPath)) {
+      continue;
+    }
+    links.push({
+      range: new vscode.Range(
+        document.positionAt(match.pathOffset),
+        document.positionAt(match.pathOffset + match.path.length),
+      ),
+      target: vscode.Uri.file(targetPath),
+    });
+  }
+
+  for (const match of navigator.findCustomComponentTags(text, projectRoot)) {
+    links.push({
+      range: new vscode.Range(
+        document.positionAt(match.tagOffset),
+        document.positionAt(match.tagOffset + match.tagLength),
+      ),
+      target: vscode.Uri.file(match.filePath),
+    });
+  }
+
+  return links;
+}
+
+/**
+ * Ctrl/Cmd+Click + F12 for publicAsset / @vite / @include / @component / @!input.
+ *
+ * Returns LocationLink with `originSelectionRange` so Ctrl/Cmd+hover shows the
+ * pointer + underline on the full path (including inside `{{ publicAsset('…') }}`),
+ * same UX as `@vite('…')` — without enabling editor.links.
+ */
 export class EdgePathDefinitionProvider implements vscode.DefinitionProvider {
   constructor(private readonly navigator: EdgePathNavigator) {}
 
@@ -309,43 +531,33 @@ export class EdgePathDefinitionProvider implements vscode.DefinitionProvider {
     document: vscode.TextDocument,
     position: vscode.Position,
     _token: vscode.CancellationToken,
-  ): vscode.ProviderResult<vscode.Definition> {
-    if (!isEdgeFile(document)) {
-      return null;
-    }
-
-    const projectRoot = this.navigator.findProjectRoot(document.uri.fsPath);
-    if (!projectRoot) {
-      return null;
-    }
-
-    const offset = document.offsetAt(position);
-    const matches = this.navigator.findHelperPaths(document.getText());
-
-    for (const match of matches) {
-      const start = match.pathOffset;
-      const end = match.pathOffset + match.path.length;
-      if (offset < start || offset > end) {
+  ): vscode.ProviderResult<vscode.LocationLink[]> {
+    for (const link of collectLocalFileLinks(this.navigator, document)) {
+      if (!rangeContainsPosition(link.range, position)) {
         continue;
       }
-
-      const targetPath = this.navigator.resolveFile(
-        projectRoot,
-        match.path,
-        match.kind,
-      );
-      if (!targetPath) {
-        return null;
-      }
-
-      return new vscode.Location(
-        vscode.Uri.file(targetPath),
-        new vscode.Position(0, 0),
-      );
+      return [
+        {
+          targetUri: link.target,
+          targetRange: new vscode.Range(0, 0, 0, 0),
+          targetSelectionRange: new vscode.Range(0, 0, 0, 0),
+          originSelectionRange: link.range,
+        },
+      ];
     }
-
     return null;
   }
+}
+
+/** Inclusive end — `Range.contains` can miss the last column in some cases. */
+function rangeContainsPosition(
+  range: vscode.Range,
+  position: vscode.Position,
+): boolean {
+  if (range.contains(position)) {
+    return true;
+  }
+  return range.end.line === position.line && range.end.character === position.character;
 }
 
 /**
@@ -394,7 +606,8 @@ export class EdgeAbsoluteUrlHoverProvider implements vscode.HoverProvider {
 
 /**
  * Link-style underlines for publicAsset / @vite / @include / @component /
- * absolute http(s) only. Avoids re-enabling editor.links (relative HTML links).
+ * custom short tags (@!input) / absolute http(s) only.
+ * Avoids re-enabling editor.links (relative HTML links).
  */
 class EdgeLinkUnderlineDecorator {
   private readonly decorationType: vscode.TextEditorDecorationType;
@@ -467,26 +680,12 @@ class EdgeLinkUnderlineDecorator {
     const text = document.getText();
     const ranges: vscode.Range[] = [];
 
-    const projectRoot = this.navigator.findProjectRoot(document.uri.fsPath);
-    if (projectRoot) {
-      for (const match of this.navigator.findHelperPaths(text)) {
-        const target = this.navigator.resolveFile(
-          projectRoot,
-          match.path,
-          match.kind,
-        );
-        if (!target) {
-          continue;
-        }
-        ranges.push(
-          new vscode.Range(
-            document.positionAt(match.pathOffset),
-            document.positionAt(match.pathOffset + match.path.length),
-          ),
-        );
-      }
+    // Local files — only when the target exists on disk
+    for (const link of collectLocalFileLinks(this.navigator, document)) {
+      ranges.push(link.range);
     }
 
+    // Absolute http(s) URLs
     for (const match of this.navigator.findAbsoluteHtmlUrls(text)) {
       ranges.push(
         new vscode.Range(

@@ -6,7 +6,7 @@ VS Code helpers for AdonisJS routes and Edge templates.
 
 1. [Go to Controller from Route](#1-go-to-controller-from-route)
 2. [Formatter for Edge JS](#2-formatter-for-edge-js)
-3. [Go to File from `publicAsset` / `@vite` / `@include` / `@component`](#3-go-to-file-from-publicasset--vite--include--component)
+3. [Go to File from `publicAsset` / `@vite` / `@include` / `@component` / `@!input`](#3-go-to-file-from-publicasset--vite--include--component--input)
 4. [Edge Spacer](#4-edge-spacer)
 
 ---
@@ -74,8 +74,20 @@ Built-in formatter for `.edge` templates — use Shift+Alt+F, Format Document, o
 4. Convert simple `@if` / `@else` / `@end` plain-text branches to `{{ cond ? 'a' : 'b' }}`
 5. Optionally collapse short single-content HTML blocks (off by default so `<label>` / form controls stay multiline)
 6. Indent nested `@component` / `@slot` / `@if` / `@each` / HTML / `<script>` / `<style>`
+7. Format `@!component` / custom short tags (`@!input`): keep fully inline calls on one line; if any prop is already split across lines, expand to indented one-prop-per-line
 
 Attribute wrap modes (same as `shufo.vscode-blade-formatter`): `auto` (default, pack to `printWidth`) | `force` | `force-aligned` | `force-expand-multiline` | `aligned-multiple` | `preserve` | `preserve-aligned`.
+
+Component props example (multiline intentional break → expanded):
+
+```edge
+@!component('components/input', {
+    label: 'Email',
+    name: 'email',
+    placeholder: 'Masukkan Email',
+    autocomplete: 'off'
+})
+```
 
 Example with `auto` + `printWidth` 140:
 
@@ -90,6 +102,7 @@ Example with `auto` + `printWidth` 140:
 - Command / context menu: **Edge: Convert HTML Comments to Edge Comments**
   {{--  --}}l convert HTML comments → `{{-- --}}` on save
 - Default indent / tab size: **4**
+- Dynamic snippets for custom components under `resources/views/components` (via `edge.disks`): type `@!` / component name to insert `@!tag({ props })` with inferred props
 
 ```json
 // .vscode/settings.json
@@ -111,13 +124,14 @@ Example with `auto` + `printWidth` 140:
 
 ---
 
-### 3. Go to File from `publicAsset` / `@vite` / `@include` / `@component`
+### 3. Go to File from `publicAsset` / `@vite` / `@include` / `@component` / `@!input`
 
-In `.edge` files, `editor.links` is off by default so relative HTML `href` / `src` / `action` values (e.g. `/logout`, `/assets/...`) are **not** underlined.
+In `.edge` files, `editor.links` is off by default so relative HTML `href` / `src` / `action` values (e.g. `/logout`, `{{ auth.user.profileFileUrl }}`) are **not** underlined.
 
 Only these get link-style underlines:
 
 - `publicAsset('...')` / `@vite('...')` / `@include('...')` / `@component('...')` — Ctrl/Cmd+Click opens the file
+- Custom short tags like `@!input` / `@!form.field` (from `resources/views/components/**/*.edge`) — Ctrl/Cmd+Click opens the component file
 - Absolute `http://` / `https://` in HTML URL attrs — hover → **Open URL**
 
 #### `publicAsset`
@@ -180,6 +194,17 @@ Then use it in templates:
 - Underlined; Ctrl/Cmd+Click opens `resources/views/<path>.edge` (default disk)
 - Disk prefix supported: `docs::guide/intro` → disk `docs` from `edge.disks`
 
+#### Custom component short tags
+
+```edge
+@!input({ name: 'email' })
+@!form.field({ label: 'Title' })
+```
+
+- Tag name is underlined when `resources/views/components/<tag>.edge` exists (dots → folders, e.g. `form.field` → `components/form/field.edge`)
+- Ctrl/Cmd+Click opens that component file
+- Named disks: `@!uikit.input` → disk `uikit` + `components/input.edge` when configured in `edge.disks`
+
 #### Absolute HTML URLs
 
 ```edge
@@ -207,9 +232,11 @@ Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` →
 - Resolves within the project root (nearest `package.json`)
 - Routes: barrel / lazy import / magic string → controller via `package.json#imports`
 - Edge formatter: document / range / on-type formatting for `.edge` files
-- Edge: `editor.links` off — relative HTML attrs are not follow-linked
-- Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / absolute `http(s)`
-- Edge: those helpers → Go to Definition; absolute `http(s)` → hover Open URL
+- Edge: component call props formatting for `@!component` / `@!input`-style short tags
+- Edge: dynamic completion snippets for `components/**/*.edge` (props inferred from template)
+- Edge: `editor.links` off — relative HTML attrs / Edge expressions in `src` are not follow-linked
+- Edge: custom underlines for `publicAsset` / `@vite` / `@include` / `@component` / `@!input` short tags / absolute `http(s)`
+- Edge: those helpers + custom component tags → Go to Definition; absolute `http(s)` → hover Open URL
 - Edge spacer: watches typing of `{{ }}` / `{{{ }}}` and expands with spaces
 
 ## Requirements

@@ -57,11 +57,30 @@ const BLOCK_CLOSE_TAGS = [
  * Inline directives that don't affect indentation.
  */
 const INLINE_TAGS = ["include", "set", "inject", "break", "continue"];
+/**
+ * Built-in Edge tags that must not be treated as custom component short tags.
+ */
+const BUILTIN_EDGE_TAGS = new Set([
+  ...BLOCK_OPEN_TAGS,
+  ...MID_BLOCK_TAGS,
+  ...BLOCK_CLOSE_TAGS,
+  ...INLINE_TAGS,
+  "vite",
+  "debug",
+  "eval",
+  "debugger",
+  "let",
+  "assign",
+  "svg",
+]);
 // Regex patterns
 const EDGE_BLOCK_OPEN = new RegExp(`^\\s*@(${BLOCK_OPEN_TAGS.join("|")})\\b`);
 const EDGE_MID_BLOCK = new RegExp(`^\\s*@(${MID_BLOCK_TAGS.join("|")})\\b`);
 const EDGE_BLOCK_CLOSE = new RegExp(`^\\s*@(${BLOCK_CLOSE_TAGS.join("|")})\\b`);
 const EDGE_INLINE = new RegExp(`^\\s*@(${INLINE_TAGS.join("|")})\\b`);
+/** @!component( / @component( / @!input( / @!form.field( */
+const COMPONENT_CALL_START =
+  /^@(!?)([a-zA-Z][\w.]*)\s*\(/;
 const HTML_VOID_ELEMENTS = new Set([
   "area",
   "base",
@@ -1459,6 +1478,441 @@ function computeIndentDelta(trimmed: string): {
   }
   return { preCloses, postOpens: tagStack.length };
 }
+// ─── Component call formatting (@!component / @!input) ───────────────────────
+
+/**
+ * True when this Edge tag should be formatted as a component call
+ * (`@component` or a custom short tag like `@!input`).
+ */
+function isFormattableComponentTag(tagName: string): boolean {
+  const base = tagName.split(".")[0].toLowerCase();
+  if (base === "component") {
+    return true;
+  }
+  return !BUILTIN_EDGE_TAGS.has(base);
+}
+
+/**
+ * Walk a string tracking quotes and `{{ }}`, invoking `onCodeChar` for each
+ * character outside those contexts. Returns false if scanning aborted early.
+ */
+function scanCodeChars(
+  str: string,
+  start: number,
+  onCodeChar: (ch: string, index: number) => boolean | void,
+): void {
+  let inSingle = false;
+  let inDouble = false;
+  let inExpr = 0;
+  for (let i = start; i < str.length; i++) {
+    const ch = str[i];
+    const next = str[i + 1] || "";
+    if (!inSingle && !inDouble) {
+      if (ch === "{" && next === "{") {
+        inExpr++;
+        i++;
+        continue;
+      }
+      if (ch === "}" && next === "}" && inExpr > 0) {
+        inExpr--;
+        i++;
+        continue;
+      }
+    }
+    if (inExpr > 0) {
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (inSingle || inDouble) {
+      continue;
+    }
+    if (onCodeChar(ch, i) === false) {
+      return;
+    }
+  }
+}
+
+function findMatchingParen(str: string, openIdx: number): number {
+  let depth = 0;
+  let found = -1;
+  scanCodeChars(str, openIdx, (ch, i) => {
+    if (ch === "(") {
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth === 0) {
+        found = i;
+        return false;
+      }
+    }
+  });
+  return found;
+}
+
+function findMatchingBrace(str: string, openIdx: number): number {
+  let depth = 0;
+  let found = -1;
+  scanCodeChars(str, openIdx, (ch, i) => {
+    if (ch === "{") {
+      depth++;
+    } else if (ch === "}") {
+      depth--;
+      if (depth === 0) {
+        found = i;
+        return false;
+      }
+    }
+  });
+  return found;
+}
+
+function isParenBalanced(str: string): boolean {
+  let depth = 0;
+  let balanced = true;
+  scanCodeChars(str, 0, (ch) => {
+    if (ch === "(") {
+      depth++;
+    } else if (ch === ")") {
+      depth--;
+      if (depth < 0) {
+        balanced = false;
+        return false;
+      }
+    }
+  });
+  return balanced && depth === 0;
+}
+
+/**
+ * Index of the next top-level comma in `args` starting at `from`, or -1.
+ */
+function findTopLevelComma(args: string, from: number): number {
+  let depthParen = 0;
+  let depthBrace = 0;
+  let depthBracket = 0;
+  let found = -1;
+  scanCodeChars(args, from, (ch, idx) => {
+    if (ch === "(") depthParen++;
+    else if (ch === ")") depthParen--;
+    else if (ch === "{") depthBrace++;
+    else if (ch === "}") depthBrace--;
+    else if (ch === "[") depthBracket++;
+    else if (ch === "]") depthBracket--;
+    else if (
+      ch === "," &&
+      depthParen === 0 &&
+      depthBrace === 0 &&
+      depthBracket === 0
+    ) {
+      found = idx;
+      return false;
+    }
+  });
+  return found;
+}
+
+/**
+ * Locate the props object `{...}` inside component call arguments.
+ * `@component('path', { ... })` → second arg; `@!input({ ... })` → first `{`.
+ */
+function findPropsObjectRange(
+  args: string,
+  tagName: string,
+): { start: number; end: number } | null {
+  const isComponentKeyword =
+    tagName.split(".")[0].toLowerCase() === "component";
+  let searchFrom = 0;
+
+  if (isComponentKeyword) {
+    const commaIdx = findTopLevelComma(args, 0);
+    if (commaIdx === -1) {
+      return null;
+    }
+    searchFrom = commaIdx + 1;
+  }
+
+  const relative = args.slice(searchFrom).search(/\{/);
+  if (relative === -1) {
+    return null;
+  }
+  const braceStart = searchFrom + relative;
+  if (args.slice(searchFrom, braceStart).trim() !== "") {
+    return null;
+  }
+
+  const braceEnd = findMatchingBrace(args, braceStart);
+  if (braceEnd === -1) {
+    return null;
+  }
+  return { start: braceStart, end: braceEnd };
+}
+
+/**
+ * Split object literal body into top-level `key: value` (or shorthand) props.
+ */
+function splitObjectProps(objectBody: string): string[] {
+  const props: string[] = [];
+  let start = 0;
+  let depthParen = 0;
+  let depthBrace = 0;
+  let depthBracket = 0;
+  let inSingle = false;
+  let inDouble = false;
+  let inExpr = 0;
+
+  const pushProp = (end: number) => {
+    const raw = objectBody.slice(start, end).trim();
+    if (raw) {
+      props.push(raw);
+    }
+    start = end + 1;
+  };
+
+  for (let i = 0; i < objectBody.length; i++) {
+    const ch = objectBody[i];
+    const next = objectBody[i + 1] || "";
+
+    if (!inSingle && !inDouble) {
+      if (ch === "{" && next === "{") {
+        inExpr++;
+        i++;
+        continue;
+      }
+      if (ch === "}" && next === "}" && inExpr > 0) {
+        inExpr--;
+        i++;
+        continue;
+      }
+    }
+    if (inExpr > 0) {
+      continue;
+    }
+    if (ch === '"' && !inSingle) {
+      inDouble = !inDouble;
+      continue;
+    }
+    if (ch === "'" && !inDouble) {
+      inSingle = !inSingle;
+      continue;
+    }
+    if (inSingle || inDouble) {
+      continue;
+    }
+
+    if (ch === "(") depthParen++;
+    else if (ch === ")") depthParen--;
+    else if (ch === "{") depthBrace++;
+    else if (ch === "}") depthBrace--;
+    else if (ch === "[") depthBracket++;
+    else if (ch === "]") depthBracket--;
+    else if (
+      ch === "," &&
+      depthParen === 0 &&
+      depthBrace === 0 &&
+      depthBracket === 0
+    ) {
+      pushProp(i);
+    }
+  }
+  pushProp(objectBody.length);
+  return props;
+}
+
+/**
+ * Normalize a single prop to `key: value` (space after colon) or shorthand `key`.
+ */
+function normalizeProp(prop: string): string {
+  const collapsed = prop.replace(/\s+/g, " ").trim();
+  const match = collapsed.match(/^([a-zA-Z_$][\w$]*)\s*:\s*([\s\S]+)$/);
+  if (match) {
+    return `${match[1]}: ${match[2].trim()}`;
+  }
+  return collapsed;
+}
+
+/**
+ * Rewrite a full component call string. When `expand` is true, emit
+ * one-prop-per-line with `baseIndent` + `indentStr`.
+ */
+function rewriteComponentCall(
+  call: string,
+  baseIndent: string,
+  indentStr: string,
+  expand: boolean,
+): string[] {
+  // Join physical lines with spaces so the call can be re-parsed as one unit.
+  const joined = call
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l !== "")
+    .join(" ");
+
+  const startMatch = joined.match(COMPONENT_CALL_START);
+  if (!startMatch) {
+    return [baseIndent + joined];
+  }
+
+  const bang = startMatch[1];
+  const tagName = startMatch[2];
+  const openParenIdx = joined.indexOf("(", startMatch[0].length - 1);
+  if (openParenIdx === -1) {
+    return [baseIndent + joined];
+  }
+  const closeParenIdx = findMatchingParen(joined, openParenIdx);
+  if (closeParenIdx === -1) {
+    return [baseIndent + joined];
+  }
+
+  const prefix = `@${bang}${tagName}`;
+  const args = joined.slice(openParenIdx + 1, closeParenIdx);
+  const trailing = joined.slice(closeParenIdx + 1).trim(); // usually empty
+
+  const propsRange = findPropsObjectRange(args, tagName);
+  if (!propsRange) {
+    return [baseIndent + `${prefix}(${args.trim()})${trailing}`];
+  }
+
+  const beforeProps = args.slice(0, propsRange.start).replace(/\s+/g, " ").trimEnd();
+  const objectBody = args.slice(propsRange.start + 1, propsRange.end);
+  const afterProps = args.slice(propsRange.end + 1).replace(/\s+/g, " ").trim();
+  const props = splitObjectProps(objectBody).map(normalizeProp);
+
+  if (props.length === 0) {
+    const emptyArgs = beforeProps
+      ? `${beforeProps} {}`
+      : "{}";
+    return [baseIndent + `${prefix}(${emptyArgs}${afterProps ? " " + afterProps : ""})${trailing}`];
+  }
+
+  if (!expand) {
+    const propsInline = props.join(", ");
+    const argsInline = beforeProps
+      ? `${beforeProps} { ${propsInline} }`
+      : `{ ${propsInline} }`;
+    const fullArgs = afterProps ? `${argsInline} ${afterProps}` : argsInline;
+    return [baseIndent + `${prefix}(${fullArgs})${trailing}`];
+  }
+
+  const propIndent = baseIndent + indentStr;
+  const lines: string[] = [];
+  const openArgs = beforeProps ? `${beforeProps} {` : `{`;
+  lines.push(`${baseIndent}${prefix}(${openArgs}`);
+  props.forEach((prop, idx) => {
+    const comma = idx < props.length - 1 ? "," : "";
+    lines.push(`${propIndent}${prop}${comma}`);
+  });
+  const close = afterProps ? `} ${afterProps})` : `})`;
+  lines.push(`${baseIndent}${close}${trailing}`);
+  return lines;
+}
+
+/**
+ * True when a component call line opens a props `{` that is not closed yet.
+ */
+function hasUnclosedPropsBrace(callLine: string): boolean {
+  let depth = 0;
+  scanCodeChars(callLine, 0, (ch) => {
+    if (ch === "{") depth++;
+    else if (ch === "}") depth--;
+  });
+  return depth > 0;
+}
+
+/**
+ * Format `@!component` / `@component` / custom short-tag calls:
+ * - fully inline → keep one line (normalize `key:'v'` → `key: 'v'`)
+ * - any intentional line break → expand to indented one-prop-per-line
+ *   with `})` on its own line
+ */
+export function formatComponentCalls(
+  lines: string[],
+  indentStr: string,
+): string[] {
+  const result: string[] = [];
+  let i = 0;
+  let insideScriptStyle = false;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    const trimmed = line.trim();
+
+    if (isScriptStyleOpen(trimmed)) {
+      insideScriptStyle = true;
+      result.push(line);
+      i++;
+      continue;
+    }
+    if (
+      SCRIPT_STYLE_CLOSE.test(line) ||
+      /^<\/(script|style)\s*>/i.test(trimmed)
+    ) {
+      insideScriptStyle = false;
+      result.push(line);
+      i++;
+      continue;
+    }
+    if (insideScriptStyle) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    const startMatch = trimmed.match(COMPONENT_CALL_START);
+    if (!startMatch || !isFormattableComponentTag(startMatch[2])) {
+      result.push(line);
+      i++;
+      continue;
+    }
+
+    const baseIndent = line.match(/^(\s*)/)?.[1] || "";
+    let accumulated = trimmed;
+    let j = i;
+    // Multiline if the opening line already breaks the props object,
+    // or if we must pull continuation lines to close `(...)`.
+    let wasMultiline = hasUnclosedPropsBrace(trimmed) || /,\s*$/.test(trimmed);
+
+    while (
+      (!isParenBalanced(accumulated) || hasUnclosedPropsBrace(accumulated)) &&
+      j + 1 < lines.length
+    ) {
+      j++;
+      wasMultiline = true;
+      const nextTrimmed = lines[j].trim();
+      if (nextTrimmed === "") {
+        continue;
+      }
+      accumulated += " " + nextTrimmed;
+    }
+
+    if (!isParenBalanced(accumulated)) {
+      // Could not close the call — leave lines untouched
+      for (let k = i; k <= j; k++) {
+        result.push(lines[k]);
+      }
+      i = j + 1;
+      continue;
+    }
+
+    const rewritten = rewriteComponentCall(
+      accumulated,
+      baseIndent,
+      indentStr,
+      wasMultiline,
+    );
+    result.push(...rewritten);
+    i = j + 1;
+  }
+
+  return result;
+}
+
 // ─── MAIN FORMATTER ──────────────────────────────────────────────────────────
 export class EdgeDocumentFormatter
   implements vscode.DocumentFormattingEditProvider
@@ -1491,9 +1945,11 @@ export class EdgeDocumentFormatter
     if (config.collapseShortBlocks) {
       lines = collapseShortHtmlBlocks(lines, config.printWidth || 140);
     }
-    // Step 6: Apply indentation formatting
+    // Step 6: Expand multiline @!component / @!input props before indent pass
+    lines = formatComponentCalls(lines, indentStr);
+    // Step 7: Apply indentation formatting (aware of component props blocks)
     let formatted = this.formatLines(lines, indentStr, config);
-    // Step 7: Wrap HTML attrs like blade-formatter (after indent so levels stay correct)
+    // Step 8: Wrap HTML attrs like blade-formatter (after indent so levels stay correct)
     formatted = wrapLongHtmlTags(
       formatted,
       config.printWidth || 140,
@@ -1501,6 +1957,8 @@ export class EdgeDocumentFormatter
       config.wrapAttributes,
       config.wrapAttributesMinAttrs,
     );
+    // Step 9: Re-apply component call formatting after indent/wrap
+    formatted = formatComponentCalls(formatted, indentStr);
     const fullRange = new vscode.Range(
       document.positionAt(0),
       document.positionAt(document.getText().length),
@@ -1519,6 +1977,11 @@ export class EdgeDocumentFormatter
     let innerIndentLevel = 0;
     let consecutiveBlankLines = 0;
     let insideMultiLineComment = false;
+    /** Inside multiline `@!component` / `@!input` props object (`{` … `}`). */
+    let insideComponentProps = false;
+    let componentCallIndent = 0;
+    /** After multiline `@component` (no !) props close, indent the block body. */
+    let pendingComponentBodyIndent = false;
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i];
       const trimmed = rawLine.trim();
@@ -1596,7 +2059,37 @@ export class EdgeDocumentFormatter
         result.push(indentStr.repeat(indentLevel) + trimmed);
         continue;
       }
-      // --- Edge directive handling ---
+      // Multiline component props: indent props one level under the call
+      if (insideComponentProps) {
+        if (/^\}/.test(trimmed)) {
+          result.push(indentStr.repeat(componentCallIndent) + trimmed);
+          insideComponentProps = false;
+          if (pendingComponentBodyIndent) {
+            indentLevel = componentCallIndent + 1;
+            pendingComponentBodyIndent = false;
+          }
+          continue;
+        }
+        result.push(indentStr.repeat(componentCallIndent + 1) + trimmed);
+        continue;
+      }
+      // --- Edge directive / component call handling ---
+      const componentMatch = trimmed.match(COMPONENT_CALL_START);
+      if (componentMatch && isFormattableComponentTag(componentMatch[2])) {
+        result.push(indentStr.repeat(indentLevel) + trimmed);
+        const isBang = componentMatch[1] === "!";
+        const isComponentKeyword =
+          componentMatch[2].split(".")[0].toLowerCase() === "component";
+        if (hasUnclosedPropsBrace(trimmed)) {
+          insideComponentProps = true;
+          componentCallIndent = indentLevel;
+          pendingComponentBodyIndent = !isBang && isComponentKeyword;
+        } else if (!isBang && isComponentKeyword && isParenBalanced(trimmed)) {
+          // Self-contained block @component(...) — indent body
+          indentLevel++;
+        }
+        continue;
+      }
       // @end / @endsection - decrease before printing
       if (EDGE_BLOCK_CLOSE.test(trimmed)) {
         indentLevel = Math.max(0, indentLevel - 1);
@@ -1609,7 +2102,7 @@ export class EdgeDocumentFormatter
         result.push(indentStr.repeat(dedented) + trimmed);
         continue;
       }
-      // @component, @slot, @if, @each, @unless, @forelse, @section - print then increase
+      // @slot, @if, @each, … (not component — handled above)
       if (EDGE_BLOCK_OPEN.test(trimmed)) {
         result.push(indentStr.repeat(indentLevel) + trimmed);
         indentLevel++;
