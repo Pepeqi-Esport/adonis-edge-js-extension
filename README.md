@@ -8,6 +8,9 @@ VS Code extension for Adonis JS 6+ routes and Edge templates.
 2. [Formatter for Edge JS](#2-formatter-for-edge-js)
 3. [Go to File from Edge templates](#3-go-to-file-from-edge-templates)
 4. [Edge Spacer](#4-edge-spacer)
+5. [Emmet](#5-emmet)
+6. [Snippets](#6-snippets)
+7. [Generate Module](#7-generate-module)
 
 ---
 
@@ -195,3 +198,66 @@ Typing Edge mustache tags auto-inserts inner spaces for easier editing:
 - `{{{}}}` → `{{{ | }}}` (unescaped)
 
 Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` → `}}}`).
+
+---
+
+### 5. Emmet
+
+Emmet abbreviations work in `.edge` templates (mapped to HTML), with Tab expansion enabled by default:
+
+```json
+"emmet.includeLanguages": {
+  "edge": "html"
+},
+"emmet.triggerExpansionOnTab": true
+```
+
+Example: type `div.card>ul>li*3` then Tab → expands to nested HTML.
+
+---
+
+### 6. Snippets
+
+Bootstrap form snippets for `.edge` files (no `b:` prefix):
+
+| Trigger | Snippet |
+| --- | --- |
+| `label` | `<label class="form-label">…</label>` |
+| `input` | `<input class="form-control" …>` |
+| `select` | `<select class="form-select">` with option |
+| `option` | `<option>…</option>` |
+| `textarea` | `<textarea class="form-control" …>` |
+
+Also includes mustache helpers:
+
+| Trigger | Snippet |
+| --- | --- |
+| `{{` | `{{ \| }}` |
+| `{{{` | `{{{ \| }}}` |
+
+---
+
+### 7. Generate Module
+
+Command palette → **Ace: Generate Module** (`adonis-edge.generateModule`).
+
+Prompts for:
+
+1. **Module name** — e.g. `Product` / `ProductCategory`
+2. **Folder path** (optional) — nested with `/`, e.g. `api` or `dashboard/product`
+3. **Overwrite** — skip or overwrite existing files
+
+Creates controller, validation, and service from stubs:
+
+| Folder starts with | Stub set | Example targets (`Product` + `dashboard/product`) |
+| --- | --- | --- |
+| `api` | `stubs/module/api/` | `app/controllers/api/.../product_controller.ts` |
+| anything else / empty | `stubs/module/dashboard/` | `app/controllers/dashboard/product/product_controller.ts` |
+
+Generated files:
+
+- `app/controllers/<folder>/<name>_controller.ts`
+- `app/validations/<folder>/<name>_validation.ts`
+- `app/services/<folder>/<name>_service.ts`
+
+Project stubs under `stubs/module/...` override the extension’s bundled stubs when present. Output is logged to the **Adonis Edge Generate Module** channel.
