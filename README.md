@@ -167,7 +167,7 @@ Then in templates:
   prefixText: 'Rp',
   name: 'price',
   value: FormatterHelper.formatNumber(product.price),
-  placeholder: 'Masukkan Harga'
+  placeholder: 'Enter Price'
 })
 ```
 
@@ -195,15 +195,3 @@ Typing Edge mustache tags auto-inserts inner spaces for easier editing:
 - `{{{}}}` → `{{{ | }}}` (unescaped)
 
 Only active in `.edge` files. Auto-close stays enabled (`{{` → `}}`, `{{{` → `}}}`).
-
----
-
-## Limitations
-
-- Only `#controllers/*` (and `#generated/controllers` for barrels) — not `@controllers`
-- `publicAsset` → `public/`; `@vite` → project root; `@include` / `@component` → `edge.disks` (default `resources/views`)
-- Custom short tags only resolve files under each disk’s `components/` directory (Edge convention)
-- `edge.global` helpers are discovered from `start/`, `providers/`, and `app/providers/` only
-- Relative HTML `href` / `src` / `action` are not navigable; only absolute `http(s)` URLs get hover Open URL
-- This package does not include an Edge TextMate grammar — install a separate Edge highlighter if you want colors
-- Simple `@if` / `@else` plain-text branches may be rewritten to ternaries on format

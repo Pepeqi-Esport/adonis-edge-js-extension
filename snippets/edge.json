@@ -8,5 +8,44 @@
     "prefix": "{{{",
     "body": "{{{ $1 }}}$0",
     "description": "Unescaped Edge output {{{ }}}"
+  },
+  "Label": {
+    "prefix": "label",
+    "body": [
+      "<label class=\"form-label\" for=\"${1}\">",
+      "    ${2:Label}",
+      "</label>"
+    ],
+    "description": "Bootstrap form label"
+  },
+  "Input": {
+    "prefix": "input",
+    "body": "<input type=\"${1:text}\" class=\"form-control\" name=\"${2}\" id=\"${3}\" value=\"${4}\" placeholder=\"${5}\" autocomplete=\"off\">",
+    "description": "Bootstrap form input"
+  },
+  "Select": {
+    "prefix": "select",
+    "body": [
+      "<select class=\"form-select\">",
+      "    <option value=\"${1}\">",
+      "        ${2:Choose one}",
+      "    </option>",
+      "</select>"
+    ],
+    "description": "Bootstrap form select"
+  },
+  "Option": {
+    "prefix": "option",
+    "body": [
+      "<option value=\"${1}\">",
+      "    ${2:Choose one}",
+      "</option>"
+    ],
+    "description": "Select option"
+  },
+  "Textarea": {
+    "prefix": "textarea",
+    "body": "<textarea class=\"form-control\" name=\"${1}\" id=\"${2}\" placeholder=\"${3}\" autocomplete=\"off\" cols=\"${4:30}\" rows=\"${5:5}\"></textarea>",
+    "description": "Bootstrap form textarea"
   }
 }

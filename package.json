@@ -2,7 +2,7 @@
   "name": "adonis-edge-js",
   "displayName": "Adonis Edge JS",
   "description": "Adonis Edge JS Extension for VS Code",
-  "version": "1.4.4",
+  "version": "1.4.5",
   "publisher": "codenameryuu",
   "repository": {
     "type": "git",
@@ -139,12 +139,22 @@
       }
     },
     "configurationDefaults": {
+      "emmet.includeLanguages": {
+        "edge": "html"
+      },
+      "emmet.triggerExpansionOnTab": true,
       "[edge]": {
         "editor.autoClosingBrackets": "always",
         "editor.defaultFormatter": "codenameryuu.adonis-edge-js",
         "editor.tabSize": 4,
         "editor.detectIndentation": false,
-        "editor.links": false
+        "editor.links": false,
+        "editor.snippetSuggestions": "top",
+        "editor.quickSuggestions": {
+          "other": true,
+          "comments": false,
+          "strings": true
+        }
       }
     }
   },
