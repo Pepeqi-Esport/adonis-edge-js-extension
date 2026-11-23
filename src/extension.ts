@@ -1,10 +1,10 @@
 import * as vscode from "vscode";
-import { AdonisRoutesDefinitionProvider } from "./definitionProvider";
-import { registerEdgePathNavigation } from "./edgeDocumentLinkProvider";
-import { registerEdgeSpacer } from "./edgeSpacer";
-import { registerEdgeFormatter } from "./edgeFormatter";
-import { registerGenerateModule } from "./generateModule";
-import { registerEdgeComponentSnippets } from "./edgeComponentSnippets";
+import { AdonisRoutesDefinitionProvider } from "./services/adonisRoutesDefinitionProvider";
+import { registerEdgePathNavigation } from "./services/edgePathNavigation";
+import { registerEdgeSpacer } from "./services/edgeSpacer";
+import { registerEdgeFormatter } from "./services/edgeFormatter";
+import { registerGenerateModule } from "./services/generateModule";
+import { registerEdgeComponentSnippets } from "./services/edgeComponentSnippets";
 
 export function activate(context: vscode.ExtensionContext) {
   const routesProvider = new AdonisRoutesDefinitionProvider();

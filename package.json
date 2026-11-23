@@ -18,8 +18,7 @@
   ],
   "activationEvents": [
     "onLanguage:typescript",
-    "workspaceContains:**/*.edge",
-    "onCommand:adonis-edge.generateModule"
+    "workspaceContains:**/*.edge"
   ],
   "contributes": {
     "languages": [

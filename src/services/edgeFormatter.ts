@@ -1,28 +1,10 @@
 import * as vscode from "vscode";
 
-/** Same modes as shufo/blade-formatter (js-beautify wrap_attributes). */
-type WrapAttributesMode =
-  | "auto"
-  | "force"
-  | "force-aligned"
-  | "force-expand-multiline"
-  | "aligned-multiple"
-  | "preserve"
-  | "preserve-aligned";
-
-interface EdgeFormatConfig {
-  indentSize: number;
-  preserveNewLines: boolean;
-  maxPreserveNewLines: number;
-  /** Like Prettier printWidth / blade wrapLineLength. */
-  printWidth: number;
-  /** Blade-formatter-compatible attribute wrap style. */
-  wrapAttributes: WrapAttributesMode;
-  /** Min attrs before force* modes wrap (blade wrapAttributesMinAttrs). */
-  wrapAttributesMinAttrs: number;
-  /** When true, collapse short label/button/etc. blocks onto one line. Off by default. */
-  collapseShortBlocks: boolean;
-}
+import { BUILTIN_EDGE_TAGS } from "../helpers/builtinEdgeTags";
+import type {
+  EdgeFormatConfig,
+  WrapAttributesMode,
+} from "../interfaces/edgeFormat";
 
 /**
  * Edge block directives that increase indentation.
@@ -57,22 +39,6 @@ const BLOCK_CLOSE_TAGS = [
  * Inline directives that don't affect indentation.
  */
 const INLINE_TAGS = ["include", "set", "inject", "break", "continue"];
-/**
- * Built-in Edge tags that must not be treated as custom component short tags.
- */
-const BUILTIN_EDGE_TAGS = new Set([
-  ...BLOCK_OPEN_TAGS,
-  ...MID_BLOCK_TAGS,
-  ...BLOCK_CLOSE_TAGS,
-  ...INLINE_TAGS,
-  "vite",
-  "debug",
-  "eval",
-  "debugger",
-  "let",
-  "assign",
-  "svg",
-]);
 // Regex patterns
 const EDGE_BLOCK_OPEN = new RegExp(`^\\s*@(${BLOCK_OPEN_TAGS.join("|")})\\b`);
 const EDGE_MID_BLOCK = new RegExp(`^\\s*@(${MID_BLOCK_TAGS.join("|")})\\b`);

@@ -1,4 +1,5 @@
 import * as vscode from "vscode";
+import { isEdgeDocument } from "../helpers/isEdgeDocument";
 
 const TAG_TRIPLE = 0;
 const TAG_DOUBLE = 1;
@@ -164,11 +165,4 @@ function matchNear(
     }
   }
   return best;
-}
-
-function isEdgeDocument(document: vscode.TextDocument): boolean {
-  if (document.languageId === "edge") {
-    return true;
-  }
-  return document.fileName.toLowerCase().endsWith(".edge");
 }

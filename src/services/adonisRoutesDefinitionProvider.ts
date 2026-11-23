@@ -2,13 +2,14 @@ import * as vscode from "vscode";
 import * as ts from "typescript";
 import * as path from "path";
 import * as fs from "fs";
+import { getPackageImports } from "../helpers/packageImports";
+import { findProjectRoot } from "../helpers/projectRoot";
+import { findBestMethodNameNode } from "../helpers/typescriptAst";
+import type { ClickContext, HandlerInfo } from "../interfaces/routesDefinition";
 
 export class AdonisRoutesDefinitionProvider
   implements vscode.DefinitionProvider
 {
-  private importsCache = new Map<string, Record<string, unknown>>();
-  private cacheTimestamps = new Map<string, number>();
-
   provideDefinition(
     document: vscode.TextDocument,
     position: vscode.Position,
@@ -20,7 +21,7 @@ export class AdonisRoutesDefinitionProvider
         return null;
       }
 
-      const projectRoot = this.findProjectRoot(filePath);
+      const projectRoot = findProjectRoot(filePath);
       if (!projectRoot) {
         return null;
       }
@@ -102,18 +103,6 @@ export class AdonisRoutesDefinitionProvider
       normalizedPath.endsWith(path.sep + "routes.ts") ||
       normalizedPath.endsWith(path.sep + "start" + path.sep + "routes.ts")
     );
-  }
-
-  private findProjectRoot(filePath: string): string | null {
-    let currentDir = path.dirname(filePath);
-    while (currentDir !== path.dirname(currentDir)) {
-      const packageJsonPath = path.join(currentDir, "package.json");
-      if (fs.existsSync(packageJsonPath)) {
-        return currentDir;
-      }
-      currentDir = path.dirname(currentDir);
-    }
-    return null;
   }
 
   private findNodeAtPosition(
@@ -770,7 +759,7 @@ export class AdonisRoutesDefinitionProvider
   }
 
   private findControllersBarrelFile(projectRoot: string): string | null {
-    const imports = this.getPackageImports(projectRoot);
+    const imports = getPackageImports(projectRoot);
 
     const exact =
       imports["#generated/controllers"] || imports["#generated/controllers.js"];
@@ -933,7 +922,7 @@ export class AdonisRoutesDefinitionProvider
     controllerName: string,
     projectRoot: string,
   ): string | null {
-    const imports = this.getPackageImports(projectRoot);
+    const imports = getPackageImports(projectRoot);
     const controllersMapping = imports["#controllers/*"];
     if (typeof controllersMapping !== "string") {
       return null;
@@ -966,25 +955,6 @@ export class AdonisRoutesDefinitionProvider
     return null;
   }
 
-  private getPackageImports(projectRoot: string): Record<string, unknown> {
-    const packageJsonPath = path.join(projectRoot, "package.json");
-    try {
-      const stat = fs.statSync(packageJsonPath);
-      const cacheKey = packageJsonPath;
-
-      if (this.cacheTimestamps.get(cacheKey) !== stat.mtime.getTime()) {
-        const content = fs.readFileSync(packageJsonPath, "utf8");
-        const packageJson = JSON.parse(content);
-        this.importsCache.set(cacheKey, packageJson.imports || {});
-        this.cacheTimestamps.set(cacheKey, stat.mtime.getTime());
-      }
-
-      return this.importsCache.get(cacheKey) || {};
-    } catch {
-      return {};
-    }
-  }
-
   private findMethodInControllerFile(
     controllerPath: string,
     methodName: string,
@@ -998,7 +968,9 @@ export class AdonisRoutesDefinitionProvider
         true,
       );
 
-      const best = this.findBestMethodNameNode(sourceFile, methodName);
+      const best = findBestMethodNameNode(sourceFile, methodName, {
+        scope: "controller",
+      });
       if (!best) {
         return null;
       }
@@ -1025,81 +997,11 @@ export class AdonisRoutesDefinitionProvider
     }
   }
 
-  private findBestMethodNameNode(
-    sourceFile: ts.SourceFile,
-    methodName: string,
-  ): ts.Identifier | null {
-    const candidates: { node: ts.Identifier; priority: number }[] = [];
-
-    const visit = (node: ts.Node) => {
-      if (
-        ts.isMethodDeclaration(node) &&
-        node.name &&
-        ts.isIdentifier(node.name) &&
-        node.name.text === methodName
-      ) {
-        let priority = 2;
-
-        let parent: ts.Node = node.parent;
-        while (parent) {
-          if (
-            ts.isClassDeclaration(parent) &&
-            parent.modifiers?.some(
-              (m) => m.kind === ts.SyntaxKind.ExportKeyword,
-            ) &&
-            parent.modifiers?.some(
-              (m) => m.kind === ts.SyntaxKind.DefaultKeyword,
-            )
-          ) {
-            priority = 1;
-            break;
-          }
-          if (ts.isClassDeclaration(parent)) {
-            priority = 2;
-            break;
-          }
-          parent = parent.parent;
-        }
-
-        candidates.push({ node: node.name, priority });
-      }
-
-      if (
-        ts.isPropertyDeclaration(node) &&
-        node.name &&
-        ts.isIdentifier(node.name) &&
-        node.name.text === methodName
-      ) {
-        candidates.push({ node: node.name, priority: 2 });
-      }
-
-      if (
-        ts.isFunctionDeclaration(node) &&
-        node.name &&
-        ts.isIdentifier(node.name) &&
-        node.name.text === methodName &&
-        node.modifiers?.some((m) => m.kind === ts.SyntaxKind.ExportKeyword)
-      ) {
-        candidates.push({ node: node.name, priority: 3 });
-      }
-
-      ts.forEachChild(node, visit);
-    };
-
-    visit(sourceFile);
-    if (candidates.length === 0) {
-      return null;
-    }
-
-    candidates.sort((a, b) => a.priority - b.priority);
-    return candidates[0].node;
-  }
-
   private resolveControllerFromImportPath(
     importPath: string,
     projectRoot: string,
   ): vscode.Location | null {
-    const imports = this.getPackageImports(projectRoot);
+    const imports = getPackageImports(projectRoot);
     const mapping = imports[importPath];
 
     if (typeof mapping === "string") {
@@ -1203,7 +1105,7 @@ export class AdonisRoutesDefinitionProvider
     projectRoot: string,
     sourceFile: ts.SourceFile,
   ): vscode.Location | null {
-    const imports = this.getPackageImports(projectRoot);
+    const imports = getPackageImports(projectRoot);
     const routesMapping = imports["#routes/*"];
     if (typeof routesMapping === "string") {
       const basePath = path.resolve(
@@ -1236,30 +1138,4 @@ export class AdonisRoutesDefinitionProvider
 
     return null;
   }
-}
-
-interface ClickContext {
-  type:
-    | "controller_variable"
-    | "controller_barrel"
-    | "method_string"
-    | "controller_import_path"
-    | "routes_module";
-  variableName?: string;
-  controllerName?: string;
-  methodName?: string;
-  importPath?: string;
-  moduleName?: string;
-  barrelPath?: string[];
-  /** Absolute offsets for partial highlight inside magic strings */
-  selectionStart?: number;
-  selectionEnd?: number;
-}
-
-interface HandlerInfo {
-  type: "controller" | "controller_variable" | "controller_barrel";
-  controllerName?: string;
-  variableName?: string;
-  methodName?: string;
-  barrelPath?: string[];
 }

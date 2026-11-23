@@ -1,0 +1,35 @@
+/**
+ * Built-in Edge tags that must not be treated as custom component short tags.
+ * Shared by path navigation and the formatter.
+ */
+export const BUILTIN_EDGE_TAGS = new Set([
+  "component",
+  "slot",
+  "if",
+  "each",
+  "unless",
+  "forelse",
+  "section",
+  "stack",
+  "push",
+  "prepend",
+  "else",
+  "elseif",
+  "end",
+  "endsection",
+  "endstack",
+  "endpush",
+  "endprepend",
+  "include",
+  "set",
+  "inject",
+  "break",
+  "continue",
+  "vite",
+  "debug",
+  "eval",
+  "debugger",
+  "let",
+  "assign",
+  "svg",
+]);
