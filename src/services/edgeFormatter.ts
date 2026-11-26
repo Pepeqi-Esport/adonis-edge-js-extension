@@ -39,11 +39,14 @@ const BLOCK_CLOSE_TAGS = [
  * Inline directives that don't affect indentation.
  */
 const INLINE_TAGS = ["include", "set", "inject", "break", "continue"];
+/** Tags whose `(...)` argument is a JS expression that may span lines. */
+const JS_EXPR_TAGS = ["let", "assign", "eval"];
 // Regex patterns
 const EDGE_BLOCK_OPEN = new RegExp(`^\\s*@(${BLOCK_OPEN_TAGS.join("|")})\\b`);
 const EDGE_MID_BLOCK = new RegExp(`^\\s*@(${MID_BLOCK_TAGS.join("|")})\\b`);
 const EDGE_BLOCK_CLOSE = new RegExp(`^\\s*@(${BLOCK_CLOSE_TAGS.join("|")})\\b`);
 const EDGE_INLINE = new RegExp(`^\\s*@(${INLINE_TAGS.join("|")})\\b`);
+const EDGE_JS_EXPR = new RegExp(`^@(${JS_EXPR_TAGS.join("|")})\\b`);
 /** @!component( / @component( / @!input( / @!form.field( */
 const COMPONENT_CALL_START =
   /^@(!?)([a-zA-Z][\w.]*)\s*\(/;
@@ -1556,6 +1559,30 @@ function isParenBalanced(str: string): boolean {
   return balanced && depth === 0;
 }
 
+/** Net `(...)` depth change outside quotes / `{{ }}`. */
+function netParenDepth(str: string): number {
+  let depth = 0;
+  scanCodeChars(str, 0, (ch) => {
+    if (ch === "(") depth++;
+    else if (ch === ")") depth--;
+  });
+  return depth;
+}
+
+/**
+ * Indent delta for a JS continuation line (same heuristic as `<script>` bodies):
+ * decrease before print when the line starts with `}` / `]` / `)`,
+ * increase after print when the line ends with `{` / `[` / `(`.
+ */
+function jsLineIndentDelta(trimmed: string): {
+  before: number;
+  after: number;
+} {
+  const before = /^\s*[\}\]\)]/.test(trimmed) ? 1 : 0;
+  const after = /[\{\[\(]\s*$/.test(trimmed) ? 1 : 0;
+  return { before, after };
+}
+
 /**
  * Index of the next top-level comma in `args` starting at `from`, or -1.
  */
@@ -1948,6 +1975,11 @@ export class EdgeDocumentFormatter
     let componentCallIndent = 0;
     /** After multiline `@component` (no !) props close, indent the block body. */
     let pendingComponentBodyIndent = false;
+    /** Inside multiline `@let` / `@assign` / `@eval` JS expression `(...)`. */
+    let insideJsExpr = false;
+    let jsExprIndent = 0;
+    let jsExprInnerIndent = 0;
+    let jsExprParenDepth = 0;
     for (let i = 0; i < lines.length; i++) {
       const rawLine = lines[i];
       const trimmed = rawLine.trim();
@@ -1973,6 +2005,22 @@ export class EdgeDocumentFormatter
       if (trimmed.includes("{{--") && !trimmed.includes("--}}")) {
         insideMultiLineComment = true;
         result.push(indentStr.repeat(indentLevel) + trimmed);
+        continue;
+      }
+      // Multiline `@let` / `@assign` / `@eval` JS bodies — indent by braces/parens
+      if (insideJsExpr) {
+        const { before, after } = jsLineIndentDelta(trimmed);
+        jsExprInnerIndent = Math.max(0, jsExprInnerIndent - before);
+        result.push(
+          indentStr.repeat(jsExprIndent + jsExprInnerIndent) + trimmed,
+        );
+        jsExprInnerIndent += after;
+        jsExprParenDepth += netParenDepth(trimmed);
+        if (jsExprParenDepth <= 0) {
+          insideJsExpr = false;
+          jsExprInnerIndent = 0;
+          jsExprParenDepth = 0;
+        }
         continue;
       }
       // Inside <script> or <style> blocks - re-indent their contents
@@ -2077,6 +2125,18 @@ export class EdgeDocumentFormatter
       // Inline Edge directives (@include, @set, @inject, @break, @continue)
       if (EDGE_INLINE.test(trimmed)) {
         result.push(indentStr.repeat(indentLevel) + trimmed);
+        continue;
+      }
+      // `@let` / `@assign` / `@eval` — enter JS indent mode when `(...)` is open
+      if (EDGE_JS_EXPR.test(trimmed)) {
+        result.push(indentStr.repeat(indentLevel) + trimmed);
+        if (!isParenBalanced(trimmed)) {
+          insideJsExpr = true;
+          jsExprIndent = indentLevel;
+          jsExprParenDepth = netParenDepth(trimmed);
+          const { after } = jsLineIndentDelta(trimmed);
+          jsExprInnerIndent = after;
+        }
         continue;
       }
       // Edge comment (single line)
